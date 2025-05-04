@@ -1,0 +1,10 @@
+[package]
+name = "arenalib"
+type = "lib"
+authors = [""]
+compiler_version = ">=0.30.0"
+
+[dependencies]
+skpla = { path = "../skpla" }
+skplam = { path = "../skplam" }
+skplg = { path = "../skplg" }
