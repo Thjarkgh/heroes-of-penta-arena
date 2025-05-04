@@ -1,0 +1,9 @@
+[package]
+name = "skpla"
+type = "lib"
+authors = [""]
+compiler_version = ">=0.30.0"
+
+[dependencies]
+skplam = { path = "../skplam" }
+skplg = { path = "../skplg" }
