@@ -12,7 +12,12 @@ export const getABIReturnValueOffset = (abi: Circuit["abi"]) => {
       return 1;
     }
     if (el.kind === "struct") {
-      throw new Error(`Invalid ABI: Cannot use struct as input`);
+      // throw new Error(`Invalid ABI: Cannot use struct as input`);
+      let result = 0;
+      for (const f of (el.fields || [])) {
+        result += getElementSize(f.type);
+      }
+      return result;
     }
     throw new Error(`Not implemented ABI input type: ${el.kind}`);
   }
@@ -87,7 +92,7 @@ function computePublicInputsSize(params: Parameter[]) {
 // TODO: Implement structure verification with some JSON verifier for T
 export function parseWitness<T>(abi: Circuit["abi"], witness: string[]) {
   if (!abi.return_type) {
-    return null;
+    return null as T;
   }
 
   let index = getABIReturnValueOffset(abi);
@@ -119,7 +124,7 @@ export function parseWitness<T>(abi: Circuit["abi"], witness: string[]) {
           }
           case 32: {
             const raw = Number.parseInt(`0x${hex.substring(2 + (32 - 4) * 2)}`, 16);
-            return
+            return sign(raw, 0x80000000);
           }
           case 64: {
             const raw = BigInt(hex.substring(2 + (32 - 8) * 2));
@@ -132,6 +137,7 @@ export function parseWitness<T>(abi: Circuit["abi"], witness: string[]) {
         }
       } else if (type.sign === 'unsigned') {
         switch (type.width) {
+          case 1: return hex.endsWith("01") ? 1 : 0;
           case 8: return Number.parseInt(`0x${hex.substring(2 + (32 - 1) * 2)}`, 16);
           case 16: return Number.parseInt(`0x${hex.substring(2 + (32 - 2) * 2)}`, 16);
           case 32: return Number.parseInt(`0x${hex.substring(2 + (32 - 4) * 2)}`, 16);
@@ -170,7 +176,27 @@ export function parseWitness<T>(abi: Circuit["abi"], witness: string[]) {
       }
       return tuple;
     } else if (type.kind === 'boolean') {
-      return witness[index].endsWith("01");
+      const b =  witness[index].endsWith("01");
+      index += 1;
+      return b;
+    } else if (type.kind === 'struct') {
+      if (!type.fields) {
+        throw new Error('Struct fields are undefined');
+      }
+      // {
+      //  "kind":"struct",
+      //  "path":"character::Character",
+      //  "fields":[
+      //    {"name":"id","type":{"kind":"integer","sign":"unsigned","width":8}},
+      //    {"name":"x","type":{"kind":"integer","sign":"unsigned","width":8}},
+      //    {"name":"y","type":{"kind":"integer","sign":"unsigned","width":8}},
+      //    {"name":"class","type":{"kind":"integer","sign":"unsigned","width":8}},{"name":"progress","type":{"kind":"integer","sign":"unsigned","width":8}},{"name":"health","type":{"kind":"integer","sign":"unsigned","width":8}},{"name":"has_been_seen","type":{"kind":"boolean"}},{"name":"is_hidden","type":{"kind":"integer","sign":"unsigned","width":1}},{"name":"target_x","type":{"kind":"integer","sign":"unsigned","width":8}},{"name":"target_y","type":{"kind":"integer","sign":"unsigned","width":8}},{"name":"damage_mod","type":{"kind":"integer","sign":"unsigned","width":8}},{"name":"last_action","type":{"kind":"integer","sign":"unsigned","width":8}},{"name":"status","type":{"kind":"integer","sign":"unsigned","width":8}},{"name":"actions","type":{"kind":"array","length":7,"type":{"kind":"array","length":32,"type":{"kind":"integer","sign":"unsigned","width":8}}}}]}}]}
+      const struct = {} as any;
+      for (let i = 0; i < type.fields.length; i++) {
+        const field = type.fields[i];
+        struct[(field as any).name] = parseWitnessElement(field.type!); 
+      }
+      return struct as T;
     } else {
       throw new Error(`Not Implemented return type ${type.kind}`);
     }
