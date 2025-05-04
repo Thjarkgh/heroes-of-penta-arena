@@ -128,35 +128,41 @@
 //     single_digit as u8
 // }
 
-use skpl::{turn, SERIALIZED_OBSTACLES_ARRAY_SIZE, SERIALIZED_ACTIONS_ARRAY_SIZE, SERIALIZED_ENEMY_OBSTACLES_ARRAY_SIZE, SERIALIZED_EVENTS_ARRAY_SIZE };
+use skpl::{turn}; //, SERIALIZED_OBSTACLES_ARRAY_SIZE, SERIALIZED_ACTIONS_ARRAY_SIZE, SERIALIZED_ENEMY_OBSTACLES_ARRAY_SIZE, SERIALIZED_EVENTS_ARRAY_SIZE };
+use skpl::{SerializedArenaActionDefinitions, SerializedArenaActions, SerializedArenaCharacterRoster, SerializedArenaEnemyObstacles, SerializedArenaEvents, SerializedArenaObstacles};
 
 
 fn main(
     // My Secret State
     secret: Field,
     my_chars_input: Field,
-    //my_char_actions: [u8; ACTION_DEFINITION_REGISTER_SIZE],
-    my_obstacles_input: [Field; SERIALIZED_OBSTACLES_ARRAY_SIZE],
-    actions: [Field; SERIALIZED_ACTIONS_ARRAY_SIZE],
+    my_char_actions: SerializedArenaActionDefinitions,
+    my_obstacles_input: SerializedArenaObstacles,
+    actions: SerializedArenaActions,
     // Common Inputs
     move: pub Field,
     // Enemy Inputs
     enemy_advance: pub Field,
-    enemy_objects: pub [Field; SERIALIZED_ENEMY_OBSTACLES_ARRAY_SIZE],
-    enemy_events: pub [Field; SERIALIZED_EVENTS_ARRAY_SIZE], //MAX_EVENTS],
+    enemy_objects: pub SerializedArenaEnemyObstacles,
+    enemy_events: pub SerializedArenaEvents, //MAX_EVENTS],
     // My Results
     my_result_advance: pub Field, // 1 bit win, 1 bit lose, 1 bit reserved, 5 bits advance
-    my_result_objects: pub [Field; SERIALIZED_ENEMY_OBSTACLES_ARRAY_SIZE],
-    my_result_events: pub [Field; SERIALIZED_EVENTS_ARRAY_SIZE],
+    my_result_objects: pub SerializedArenaEnemyObstacles,
+    my_result_events: pub SerializedArenaEvents,
     // Gamestate Hashes
     gamestate_before_hash: pub Field,
     gamestate_after_hash: pub Field,
 ) {
+    // let x = my_char_actions.map(|y|y.to_be_bytes::<32>());
+    // let mut z = [0; 30];
+    // for i in 0..30 {
+    //   z[i] = std::field::bytes32_to_field(x[i]);
+    // }
     // let (events_valid, events) = Event::parse_their_events(enemy_events);
     // assert(events_valid, f"Failed to parse their events {events}");
     // let (valid, my_obstacles_parsed) = parse_my_obstacles(my_obstacles, events);
     // assert(valid, f"Failed to parse my obstacles {my_obstacles}");
-    let valid = turn(secret, my_chars_input, my_obstacles_input, actions, move as u32, enemy_advance as u8, enemy_objects, enemy_events, my_result_advance as u8, my_result_events, my_result_objects, gamestate_before_hash, gamestate_after_hash);
+    let valid = turn(secret, my_chars_input, my_char_actions, my_obstacles_input, actions, move as u32, enemy_advance as u8, enemy_objects, enemy_events, my_result_advance as u8, my_result_events, my_result_objects, gamestate_before_hash, gamestate_after_hash);
     assert(valid, "Invalid turn");
     // // Validate global constants (to make sure one didn't change one without updating dependet ones)
     // assert(SERIALIZED_EVENTS_PER_FIELD * SERIALIZED_EVENTS_ARRAY_SIZE == MAX_EVENTS);
