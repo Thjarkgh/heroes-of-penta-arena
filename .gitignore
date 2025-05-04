@@ -93,3 +93,5 @@ circuits/product/target/product.json
 circuits/secp256r1/target/secp256r1.json
 
 circuits/skplrust/
+
+scripts.zip
