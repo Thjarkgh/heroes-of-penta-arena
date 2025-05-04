@@ -166,7 +166,7 @@
 use arenalib::MAX_OBSTACLES;
 use arenalib::{ HEIGHT, WIDTH };
 use arenalib::{ EMPTY, WALL, WATER };
-use arenalib::{ MAX_EVENTS, MAX_HEALTH, MAX_OBSTACLE_TYPE }; // MAX_CHARACTERS
+use arenalib::{ MAX_EVENTS, MAX_HEALTH, MAX_OBSTACLE_TYPE, MAX_ENEMY_OBSTACLES }; // MAX_CHARACTERS
 // use crate::{ RECEIVE_ATTACK };
 // use crate::{ ATTACK_MELEE, ATTACK_RANGED, ATTACK_FIREBALL };
 use arenalib::{ SerializedArenaEnemyObstacles, SERIALIZED_OBSTACLE_BYTE_SIZE, SERIALIZED_OBSTACLES_PER_FIELD, SERIALIZED_OBSTACLES_ARRAY_SIZE };
@@ -175,7 +175,9 @@ use arenalib::SerializedArenaObstacles;
 use crate::event::Event;
 use crate::map::{ is_visible, their_x_to_mine }; //is_neighbor
 use dep::std;
-use skplg::softassert;
+use skplg::{softassert, NOWHERE};
+use arenalib::SERIALIZED_ENEMY_OBSTACLES_ARRAY_SIZE;
+use arenalib::MAX_CHARACTERS;
 
 // pub type Obstacle = [u8; 5];
 pub struct Obstacle {
@@ -204,8 +206,8 @@ pub fn get_obstacle_type(obstacle: Obstacle) -> u8 {
 #[export]
 pub fn new_obstacle(id: u8, x: u8, y: u8, health: u8, obstacle_type: u8) -> pub (bool, Obstacle) {
     let mut valid = true;
-    softassert!(quote { valid }, quote { x < WIDTH }, quote { f"Cannot create Obstacle: Invalid x: {x} >= {WIDTH}" });
-    softassert!(quote { valid }, quote { y < HEIGHT }, quote { f"Cannot create Obstacle: Invalid y: {y} >= {HEIGHT}" });
+    softassert!(quote { valid }, quote { (x < WIDTH) | (x == NOWHERE) }, quote { f"Cannot create Obstacle: Invalid x: {x} >= {WIDTH}" });
+    softassert!(quote { valid }, quote { (y < HEIGHT) | (y == NOWHERE) }, quote { f"Cannot create Obstacle: Invalid y: {y} >= {HEIGHT}" });
     softassert!(quote { valid }, quote { health <= MAX_HEALTH }, quote { f"Cannot create Obstacle: Invalid health: {health} > {MAX_HEALTH}" });
     softassert!(quote { valid }, quote { obstacle_type <= MAX_OBSTACLE_TYPE }, quote { f"Cannot create Obstacle: Invalid obstacle type: {obstacle_type} > {MAX_OBSTACLE_TYPE}" }); //TODO: not sure if this or is_valid???
     // (valid, [ id, x, y, health, obstacle_type ])
@@ -331,27 +333,41 @@ pub fn is_obstacle_valid(obstacle: Obstacle) -> bool {
     (get_obstacle_x(obstacle) < WIDTH) & (get_obstacle_y(obstacle) < HEIGHT)
 }
 
-pub fn parse_their_obstacles(serialized_obstacles: SerializedArenaEnemyObstacles) -> (bool, [Obstacle]) {
-    let mut obstacles: [Obstacle] = &[];
+pub fn parse_their_obstacles(serialized_obstacles: SerializedArenaEnemyObstacles) -> (bool, [Obstacle; MAX_ENEMY_OBSTACLES]) {
+  let (dummy_obstacle_valid, dummy_obstacle) = new_obstacle(0, NOWHERE, NOWHERE, 255, 0);
+  assert(dummy_obstacle_valid);
+    let mut obstacles: [Obstacle; MAX_ENEMY_OBSTACLES] = [dummy_obstacle; MAX_ENEMY_OBSTACLES];
     let mut valid_result = true;
-    for i in 0..serialized_obstacles.len() {
-        let serialized_obstacle_field: [u8; 32] = serialized_obstacles[i].to_be_bytes();
+    assert(serialized_obstacles.len() == SERIALIZED_ENEMY_OBSTACLES_ARRAY_SIZE);
+    for i in 0..SERIALIZED_OBSTACLES_ARRAY_SIZE {
+        let serialized_obstacle_field: [u8; 32] = serialized_obstacles[i].to_be_bytes::<32>();
         assert(serialized_obstacle_field.len() == 32);
         for j in 0..SERIALIZED_OBSTACLES_PER_FIELD {
             let serialized_obstacle = [serialized_obstacle_field[2 + j * 3], serialized_obstacle_field[2 + j * 3 + 1], serialized_obstacle_field[2 + j * 3 + 2]];
             // let serialized_obstacle = [serialized_obstacle_field[2 + j * 3], serialized_obstacle_field[2 + j * 3 + 1], serialized_obstacle_field[2 + j * 3 + 2], serialized_obstacle_field[2 + j * 3 + 2]];
             let id = (i * SERIALIZED_OBSTACLES_PER_FIELD + j) as u8;
             let (valid, obstacle) = parse_their_obstacle(id, serialized_obstacle);
-            obstacles = obstacles.push_back(obstacle);
+            obstacles[i * SERIALIZED_OBSTACLES_PER_FIELD + j] = obstacle; //s.push_back(obstacle);
             valid_result = valid_result & valid;
         }
+    }
+    let serialized_obstacle_field = serialized_obstacles[SERIALIZED_OBSTACLES_ARRAY_SIZE].to_be_bytes::<32>();
+    assert(serialized_obstacle_field.len() == 32);
+    for j in 0..MAX_CHARACTERS {
+      let serialized_obstacle = [serialized_obstacle_field[2 + j * 3], serialized_obstacle_field[2 + j * 3 + 1], serialized_obstacle_field[2 + j * 3 + 2]];
+      // let serialized_obstacle = [serialized_obstacle_field[2 + j * 3], serialized_obstacle_field[2 + j * 3 + 1], serialized_obstacle_field[2 + j * 3 + 2], serialized_obstacle_field[2 + j * 3 + 2]];
+      let id = (MAX_OBSTACLES + j) as u8;
+      let (valid, obstacle) = parse_their_obstacle(id, serialized_obstacle);
+      obstacles[MAX_OBSTACLES + j] = obstacle; //s.push_back(obstacle);
+      valid_result = valid_result & valid;
     }
     (valid_result, obstacles)
 }
 
-pub fn parse_my_obstacles(serialized_obstacles: SerializedArenaObstacles, events: [Event; MAX_EVENTS]) -> (bool, [Obstacle]) {
+pub fn parse_my_obstacles(serialized_obstacles: SerializedArenaObstacles, events: [Event; MAX_EVENTS]) -> (bool, [Obstacle; MAX_OBSTACLES]) {
     let mut obstacles: [Obstacle] = &[];
     let mut valid_result = true;
+    assert(serialized_obstacles.len() == SERIALIZED_OBSTACLES_ARRAY_SIZE);
     for i in 0..serialized_obstacles.len() {
         let serialized_obstacle_field: [u8; 32] = serialized_obstacles[i].to_be_bytes::<32>();
         assert(serialized_obstacle_field.len() == 32);
@@ -364,7 +380,7 @@ pub fn parse_my_obstacles(serialized_obstacles: SerializedArenaObstacles, events
             valid_result = valid_result & valid;
         }
     }
-    (valid_result, obstacles)
+    (valid_result, obstacles.as_array())
 }
 
 #[export]

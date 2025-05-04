@@ -1,4 +1,4 @@
-use arenalib::{ WIDTH, WIDTH_MASK, VIEW_DISTANCE, MAX_OBSTACLES };
+use arenalib::{ WIDTH, WIDTH_MASK, VIEW_DISTANCE, MAX_OBSTACLES, MAX_ENEMY_OBSTACLES };
 use crate::obstacle::{ Obstacle, get_obstacle_y, get_obstacle_x, is_obstacle_traversible };
 use skplg::NOWHERE;
 
@@ -125,7 +125,7 @@ pub fn their_x_to_mine(x: u8) -> (bool, u8) {
     }
 }
 
-pub fn can_move_to(distance: u16, x: u8, y: u8, obstacles: [Obstacle; MAX_OBSTACLES], their_obstacles: [Obstacle]) -> bool {
+pub fn can_move_to(distance: u16, x: u8, y: u8, obstacles: [Obstacle; MAX_OBSTACLES], their_obstacles: [Obstacle; MAX_ENEMY_OBSTACLES]) -> bool {
     let mut can = distance <= (VIEW_DISTANCE as u16 * VIEW_DISTANCE as u16); //x <= advance;
 
     for i in 0..MAX_OBSTACLES {
@@ -133,7 +133,7 @@ pub fn can_move_to(distance: u16, x: u8, y: u8, obstacles: [Obstacle; MAX_OBSTAC
             can = false;
         }
     }
-    for i in 0..their_obstacles.len() {
+    for i in 0..MAX_ENEMY_OBSTACLES {
         if !is_obstacle_traversible(their_obstacles[i]) & (get_obstacle_x(their_obstacles[i]) == x) & (get_obstacle_y(their_obstacles[i]) == y) {
             can = false;
         }

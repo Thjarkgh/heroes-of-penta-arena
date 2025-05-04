@@ -1,6 +1,6 @@
 pub global NOWHERE: u8 = 255;
 pub global UNREADABLE_BYTES_PER_FIELD: u32 = 1;
-pub comptime global DEBUG: bool = true;
+pub comptime global DEBUG: bool = false;
 pub comptime fn debug(stmt: Quoted) -> Quoted {
     let debug_result = if DEBUG { stmt } else { quote {} };
     debug_result

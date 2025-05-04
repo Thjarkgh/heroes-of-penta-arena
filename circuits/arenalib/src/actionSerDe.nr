@@ -34,14 +34,17 @@ pub global SERIALIZED_ACTIONS_ARRAY_SIZE: u32 = 1;
       }
 
       let mut actions: [Action] = &[];
-      for i in 0..fields.len() {
+      assert(fields.len() == 1);
+      // for i in 0..1 {
+      let i = 0;
           let split: [u8; 32] = fields[i].to_be_bytes::<32>();
-          //assert(split.len() == 32);
+          assert(split.len() == 32);
           let mut serialized_actions_per_field = SERIALIZED_ACTIONS_PER_FIELD;
           if serialized_actions_per_field * (i + 1) > MAX_ACTIONS {
             serialized_actions_per_field = MAX_ACTIONS - serialized_actions_per_field * i;
           }
-          for j in 0..serialized_actions_per_field {
+          assert(serialized_actions_per_field == SERIALIZED_ACTIONS_PER_FIELD);
+          for j in 0..SERIALIZED_ACTIONS_PER_FIELD {
               let offset = UNREADABLE_BYTES_PER_FIELD + j * SERIALIZED_ACTION_BYTE_SIZE;
               let action_type = split[offset];
               let actor = split[offset + 1];
@@ -66,7 +69,7 @@ pub global SERIALIZED_ACTIONS_ARRAY_SIZE: u32 = 1;
                   target_y: split[offset + 3],
               }*/
           }
-      }
+      // }
       // println(actions);
       (valid, actions.as_array())
   }

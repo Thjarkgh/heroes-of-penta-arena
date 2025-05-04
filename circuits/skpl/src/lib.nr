@@ -407,7 +407,7 @@ pub fn calculate_turn(
 
     let (valid, my_obstacles_parsed) = parse_my_obstacles(my_obstacles_input, events);
     softassert!(quote { success }, quote { valid }, quote { f"Failed to parse my obstacles {my_obstacles_input}" });
-    let mut my_obstacles_parsed: [Obstacle; MAX_OBSTACLES] = my_obstacles_parsed.as_array();
+    let mut my_obstacles_parsed: [Obstacle; MAX_OBSTACLES] = my_obstacles_parsed;
 
     let (actions_valid, actions) = parse_actions(MAX_CHARACTERS as u8, actions_input); // actions.map(|action| Action::from_field(action));
     softassert!(quote { success }, quote { actions_valid }, quote { f"Failed to parse actions {actions_input}" });
@@ -575,7 +575,8 @@ pub fn turn(
         // println(f"serialized_characters_be_bytes: {serialized_characters_be_bytes}");
     });
     // let new_hash = std::field::bytes32_to_field(new_hash_bytes);
-    for i in 0..my_result_objects.len() {
+    assert(my_result_objects.len() == SERIALIZED_ENEMY_OBSTACLES_ARRAY_SIZE);
+    for i in 0..SERIALIZED_ENEMY_OBSTACLES_ARRAY_SIZE {
         let my_result_object = my_result_objects[i];
         let serialized_obstacle = serialized_obstacles_for_enemy[i];
         softassert!(quote { success }, quote { my_result_object == serialized_obstacle }, quote { f"Invalid result obstacle row {i}: {my_result_object} != {serialized_obstacle}" });

@@ -119,6 +119,7 @@ pub global VIEW_DISTANCE: u8 = 6;
 pub global MAX_ACTIONS: u32 = 4;
 pub global MAX_EVENTS: u32 = 4; // = MAX_ACTIONS // NO! handle traps in a different way (by passing as argument!)+ 4 (2 FOUND_TRAP + WIN/LOSE + 1 reserved)
 pub global MAX_OBSTACLES: u32 = 24; // leave traps for now + MAX_TRAPS; // 24 + 8 player placeables
+pub global MAX_ENEMY_OBSTACLES: u32 = MAX_OBSTACLES + MAX_CHARACTERS;
 pub global MAX_CHARACTERS: u32 = 5;
 pub global MIN_PROGRESS: u8 = 0;
 pub global MAX_PROGRESS: u8 = PROGRESS_COUNT - 1;

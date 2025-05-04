@@ -12,11 +12,12 @@ use crate::map::{ is_visible, get_distance, can_move_to };
 use crate::obstacle::Obstacle;
 use crate::obstacle::{ get_default_obstacles };
 use arenalib::{MAGE};
-use arenalib::{MAX_ACTIONS_PER_CHARACTER};
+use arenalib::{MAX_ACTIONS_PER_CHARACTER, MAX_ENEMY_OBSTACLES};
 // use crate::ResolvedAction::ResolvedAction;
 // use crate::actionDefinition::{ build_move_action };
 use arenalib::{apply_action_result_effects, apply_action_pre_calc_effects, validate_action_requirements, build_result_event};
 use arenalib::arena_action_def_builder;
+use super::obstacle::new_obstacle;
 
 // use crate::{ACTION_RESULT_COORDINATES_IDX_SELF, ACTION_RESULT_COORDINATES_IDX_TARGET, ACTION_RESULT_COORDINATES_IDX_INVISIBLE};
 // use crate::{SEE_CAST, SEE_DRAW, SEE_RITUAL, SEE_SEARCH_TRAP, RECEIVE_ATTACK, DISARMED_TRAP, ADD_OBSTACLE, WIN};
@@ -40,7 +41,7 @@ pub fn execute_action(
     actor: Character,
     mut energy: u8,
     my_obstacles: [Obstacle; MAX_OBSTACLES],
-    their_obstacles: [Obstacle]
+    their_obstacles: [Obstacle; MAX_ENEMY_OBSTACLES]
 ) -> (bool, Event, Event, Event, Character, u8) /*where T: ResolvedAction */{
   let enemy_advance = if enemy_advance >= WIDTH { 0 } else { WIDTH - enemy_advance - 1 };
     //let action_def = c.resolve_action(action.register[action.base_index + ACTION_TYPE]);
@@ -607,14 +608,16 @@ fn test_execute_action() {
     };
     let energy = 15;
     let my_obstacles = get_default_obstacles(0);
-    let their_obstacles = get_default_obstacles(1);
+    let (no_obstacle_valid, no_obstacle) = new_obstacle(0, NOWHERE, NOWHERE, 255, 0);
+    assert(no_obstacle_valid);
+    let their_obstacles = get_default_obstacles(1).as_slice().push_back(no_obstacle).push_back(no_obstacle).push_back(no_obstacle).push_back(no_obstacle).push_back(no_obstacle);
     let (valid, event, _, internal_event, c, result_energy) = execute_action(
         action,
         their_advance,
         actor,
         energy,
         my_obstacles,
-        their_obstacles
+        their_obstacles.as_array()
     );
     assert(valid, "valid");
     assert(event.actor_id == actor.id, f"{event}.actorid is not {actor}.id");
@@ -661,33 +664,33 @@ pub fn parse_actions(fields: [Field; SERIALIZED_ACTIONS_ARRAY_SIZE]) -> [Action;
 /**
 * Warning: This function can throw!!!
 */
-pub fn serialize_actions(actions: [Action]) -> [Field; SERIALIZED_ACTIONS_ARRAY_SIZE] {
-    comptime {
-        assert(UNREADABLE_BYTES_PER_FIELD + SERIALIZED_ACTIONS_PER_FIELD * SERIALIZED_ACTION_BYTE_SIZE <= 32);
-        assert(SERIALIZED_ACTIONS_ARRAY_SIZE * SERIALIZED_ACTIONS_PER_FIELD == MAX_ACTIONS);
-        assert(SERIALIZED_ACTION_BYTE_SIZE >= 4);
-    }
+// pub fn serialize_actions(actions: [Action]) -> [Field; SERIALIZED_ACTIONS_ARRAY_SIZE] {
+//     comptime {
+//         assert(UNREADABLE_BYTES_PER_FIELD + SERIALIZED_ACTIONS_PER_FIELD * SERIALIZED_ACTION_BYTE_SIZE <= 32);
+//         assert(SERIALIZED_ACTIONS_ARRAY_SIZE * SERIALIZED_ACTIONS_PER_FIELD == MAX_ACTIONS);
+//         assert(SERIALIZED_ACTION_BYTE_SIZE >= 4);
+//     }
 
-    assert(actions.len() <= MAX_ACTIONS);
+//     assert(actions.len() <= MAX_ACTIONS);
 
-    let mut actions_stuffed: [Action; MAX_ACTIONS] = [new_action(WAIT, 0, 0, 0); MAX_ACTIONS];
-    for i in 0..actions.len() {
-        actions_stuffed[i] = actions[i];
-    }
+//     let mut actions_stuffed: [Action; MAX_ACTIONS] = [new_action(WAIT, 0, 0, 0); MAX_ACTIONS];
+//     for i in 0..actions.len() {
+//         actions_stuffed[i] = actions[i];
+//     }
 
-    let mut fields: [Field] = &[];
-    for i in 0..SERIALIZED_ACTIONS_ARRAY_SIZE {
-        let mut data: [u8; 32] = [0; 32];
-        for j in 0..SERIALIZED_ACTIONS_PER_FIELD {
-            let index = i * SERIALIZED_ACTIONS_PER_FIELD + j;
-            let action = actions_stuffed[index];
-            let offset = UNREADABLE_BYTES_PER_FIELD + j * SERIALIZED_ACTION_BYTE_SIZE;
-            data[offset] = get_action_type(action);
-            data[offset + 1] = get_action_actor(action);
-            data[offset + 2] = get_action_target_x(action);
-            data[offset + 3] = get_action_target_y(action);
-        }
-        fields = fields.push_back(std::field::bytes32_to_field(data));
-    }
-    fields.as_array()
-}
+//     let mut fields: [Field] = &[];
+//     for i in 0..SERIALIZED_ACTIONS_ARRAY_SIZE {
+//         let mut data: [u8; 32] = [0; 32];
+//         for j in 0..SERIALIZED_ACTIONS_PER_FIELD {
+//             let index = i * SERIALIZED_ACTIONS_PER_FIELD + j;
+//             let action = actions_stuffed[index];
+//             let offset = UNREADABLE_BYTES_PER_FIELD + j * SERIALIZED_ACTION_BYTE_SIZE;
+//             data[offset] = get_action_type(action);
+//             data[offset + 1] = get_action_actor(action);
+//             data[offset + 2] = get_action_target_x(action);
+//             data[offset + 3] = get_action_target_y(action);
+//         }
+//         fields = fields.push_back(std::field::bytes32_to_field(data));
+//     }
+//     fields.as_array()
+// }
