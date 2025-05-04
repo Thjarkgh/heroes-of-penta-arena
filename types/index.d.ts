@@ -12,7 +12,7 @@ export type ParameterType = {
 export type Parameter = {
   name: string;
   type: ParameterType;
-  visibility: 'private' | 'public';
+  visibility?: 'private' | 'public';
 };
 
 export type FieldReturnType = { kind: "field" };
