@@ -163,50 +163,62 @@
 // }
 
 
-use crate::MAX_OBSTACLES;
-use crate::{ HEIGHT, WIDTH };
-use crate::{ EMPTY, WALL, WATER };
-use crate::{ MAX_EVENTS, MAX_HEALTH, MAX_OBSTACLE_TYPE }; // MAX_CHARACTERS
+use arenalib::MAX_OBSTACLES;
+use arenalib::{ HEIGHT, WIDTH };
+use arenalib::{ EMPTY, WALL, WATER };
+use arenalib::{ MAX_EVENTS, MAX_HEALTH, MAX_OBSTACLE_TYPE }; // MAX_CHARACTERS
 // use crate::{ RECEIVE_ATTACK };
 // use crate::{ ATTACK_MELEE, ATTACK_RANGED, ATTACK_FIREBALL };
-use crate::{ SERIALIZED_ENEMY_OBSTACLES_ARRAY_SIZE, SERIALIZED_OBSTACLE_BYTE_SIZE, SERIALIZED_OBSTACLES_PER_FIELD, SERIALIZED_OBSTACLES_ARRAY_SIZE };
-use crate::NON_EMPTY_WALKABLE_TILE_MIN;
+use arenalib::{ SerializedArenaEnemyObstacles, SERIALIZED_OBSTACLE_BYTE_SIZE, SERIALIZED_OBSTACLES_PER_FIELD, SERIALIZED_OBSTACLES_ARRAY_SIZE };
+use arenalib::NON_EMPTY_WALKABLE_TILE_MIN;
+use arenalib::SerializedArenaObstacles;
 use crate::event::Event;
 use crate::map::{ is_visible, their_x_to_mine }; //is_neighbor
 use dep::std;
-use super::softassert;
+use skplg::softassert;
 
-pub type Obstacle = [u8; 5];
-// pub struct Obstacle {
-//     pub id: u8,
-//     pub x: u8,             // 5 bit
-//     pub y: u8,             // 4 bit
-//     pub health: u8,        // 8 bit
-//     pub obstacle_type: u8, // 4 bit
-// }
+// pub type Obstacle = [u8; 5];
+pub struct Obstacle {
+    pub id: u8,
+    pub x: u8,             // 5 bit
+    pub y: u8,             // 4 bit
+    pub health: u8,        // 8 bit
+    pub obstacle_type: u8, // 4 bit
+}
 pub fn get_obstacle_id(obstacle: Obstacle) -> u8 {
-    obstacle[0]
+    obstacle.id //obstacle[0]
 }
 pub fn get_obstacle_x(obstacle: Obstacle) -> u8 {
-    obstacle[1]
+    obstacle.x //[1]
 }
 pub fn get_obstacle_y(obstacle: Obstacle) -> u8 {
-    obstacle[2]
+    obstacle.y //[2]
 }
 pub fn get_obstacle_health(obstacle: Obstacle) -> u8 {
-    obstacle[3]
+    obstacle.health //[3]
 }
 pub fn get_obstacle_type(obstacle: Obstacle) -> u8 {
-    obstacle[4]
+    obstacle.obstacle_type //[4]
 }
-pub fn new_obstacle(id: u8, x: u8, y: u8, health: u8, obstacle_type: u8) -> (bool, Obstacle) {
+
+#[export]
+pub fn new_obstacle(id: u8, x: u8, y: u8, health: u8, obstacle_type: u8) -> pub (bool, Obstacle) {
     let mut valid = true;
     softassert!(quote { valid }, quote { x < WIDTH }, quote { f"Cannot create Obstacle: Invalid x: {x} >= {WIDTH}" });
     softassert!(quote { valid }, quote { y < HEIGHT }, quote { f"Cannot create Obstacle: Invalid y: {y} >= {HEIGHT}" });
     softassert!(quote { valid }, quote { health <= MAX_HEALTH }, quote { f"Cannot create Obstacle: Invalid health: {health} > {MAX_HEALTH}" });
     softassert!(quote { valid }, quote { obstacle_type <= MAX_OBSTACLE_TYPE }, quote { f"Cannot create Obstacle: Invalid obstacle type: {obstacle_type} > {MAX_OBSTACLE_TYPE}" }); //TODO: not sure if this or is_valid???
-    (valid, [ id, x, y, health, obstacle_type ])
+    // (valid, [ id, x, y, health, obstacle_type ])
+    (valid, Obstacle { id: id, x: x, y: y, health: health, obstacle_type: obstacle_type })
 }
+
+// #[export]
+// pub struct FrontendObstacle {
+//   pub id: u8,
+//   pub x: u8,
+//   pub y: u8,
+
+// }
 
 pub fn serialize_obstacle(obstacle: Obstacle) -> [u8; SERIALIZED_OBSTACLE_BYTE_SIZE] {
     // we could assert here, since obstacles can only be create with new_obstacle?!
@@ -319,7 +331,7 @@ pub fn is_obstacle_valid(obstacle: Obstacle) -> bool {
     (get_obstacle_x(obstacle) < WIDTH) & (get_obstacle_y(obstacle) < HEIGHT)
 }
 
-pub fn parse_their_obstacles(serialized_obstacles: [Field; SERIALIZED_ENEMY_OBSTACLES_ARRAY_SIZE]) -> (bool, [Obstacle]) {
+pub fn parse_their_obstacles(serialized_obstacles: SerializedArenaEnemyObstacles) -> (bool, [Obstacle]) {
     let mut obstacles: [Obstacle] = &[];
     let mut valid_result = true;
     for i in 0..serialized_obstacles.len() {
@@ -337,7 +349,7 @@ pub fn parse_their_obstacles(serialized_obstacles: [Field; SERIALIZED_ENEMY_OBST
     (valid_result, obstacles)
 }
 
-pub fn parse_my_obstacles(serialized_obstacles: [Field; SERIALIZED_OBSTACLES_ARRAY_SIZE], events: [Event; MAX_EVENTS]) -> (bool, [Obstacle]) {
+pub fn parse_my_obstacles(serialized_obstacles: SerializedArenaObstacles, events: [Event; MAX_EVENTS]) -> (bool, [Obstacle]) {
     let mut obstacles: [Obstacle] = &[];
     let mut valid_result = true;
     for i in 0..serialized_obstacles.len() {
@@ -355,7 +367,8 @@ pub fn parse_my_obstacles(serialized_obstacles: [Field; SERIALIZED_OBSTACLES_ARR
     (valid_result, obstacles)
 }
 
-pub fn serialize_my_obstacles_for_me(obstacles: [Obstacle; MAX_OBSTACLES]) -> [Field; SERIALIZED_OBSTACLES_ARRAY_SIZE] {
+#[export]
+pub fn serialize_my_obstacles_for_me(obstacles: [Obstacle; MAX_OBSTACLES]) -> pub [Field; SERIALIZED_OBSTACLES_ARRAY_SIZE] {
     let mut serialized_obstacles: [Field; SERIALIZED_OBSTACLES_ARRAY_SIZE] = [0; SERIALIZED_OBSTACLES_ARRAY_SIZE];
     for i in 0..SERIALIZED_OBSTACLES_ARRAY_SIZE {
         let mut serialized_obstacle_field: [u8; 32] = [0; 32];
@@ -372,6 +385,7 @@ pub fn serialize_my_obstacles_for_me(obstacles: [Obstacle; MAX_OBSTACLES]) -> [F
 }
 
 pub fn serialize_my_obstacles(enemy_advance: u8, obstacles: [Obstacle; MAX_OBSTACLES]) -> [Field; SERIALIZED_OBSTACLES_ARRAY_SIZE] {
+  let enemy_advance = if enemy_advance >= WIDTH { 0 } else { WIDTH - enemy_advance - 1 };
     let mut serialized_obstacles: [Field; SERIALIZED_OBSTACLES_ARRAY_SIZE] = [0; SERIALIZED_OBSTACLES_ARRAY_SIZE];
     for i in 0..SERIALIZED_OBSTACLES_ARRAY_SIZE {
         let mut serialized_obstacle_field: [u8; 32] = [0; 32];

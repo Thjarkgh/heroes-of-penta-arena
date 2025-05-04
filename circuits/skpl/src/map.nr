@@ -1,6 +1,6 @@
-use crate::{ WIDTH, WIDTH_MASK, NOWHERE, MAX_OBSTACLES };
+use arenalib::{ WIDTH, WIDTH_MASK, VIEW_DISTANCE, MAX_OBSTACLES };
 use crate::obstacle::{ Obstacle, get_obstacle_y, get_obstacle_x, is_obstacle_traversible };
-use super::VIEW_DISTANCE;
+use skplg::NOWHERE;
 
 // pub fn is_neighbor(curr_x: u8, curr_y: u8, x: u8, y: u8) -> bool {
 //     // assert(curr_x < WIDTH);

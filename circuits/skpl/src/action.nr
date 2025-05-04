@@ -1,8 +1,9 @@
 // use crate::{ HEIGHT, WIDTH };
-use crate::{ NO_EVENT, WAIT, SEE_MOVE };
-use crate::{ MAX_ACTIONS, MAX_OBSTACLES };
-use crate::{ SERIALIZED_ACTION_BYTE_SIZE, SERIALIZED_ACTIONS_ARRAY_SIZE, SERIALIZED_ACTIONS_PER_FIELD };
-use crate::UNREADABLE_BYTES_PER_FIELD;
+use arenalib::{ NO_EVENT, WAIT, SEE_MOVE, WIDTH };
+use arenalib::{ MAX_ACTIONS, MAX_OBSTACLES };
+use arenalib::{ SERIALIZED_ACTION_BYTE_SIZE, SERIALIZED_ACTIONS_ARRAY_SIZE, SERIALIZED_ACTIONS_PER_FIELD, VIEW_DISTANCE };
+use skplg::{softassert, NOWHERE, UNREADABLE_BYTES_PER_FIELD};
+use arenalib::{Action, get_action_actor, get_action_target_x, get_action_target_y, get_action_type, new_action};
 // use crate::NON_EMPTY_WALKABLE_TILE_MIN;
 use crate::character::Character;
 use crate::event::Event;
@@ -10,754 +11,38 @@ use crate::event::{ build_subtype_value_event }; // , build_value_event
 use crate::map::{ is_visible, get_distance, can_move_to };
 use crate::obstacle::Obstacle;
 use crate::obstacle::{ get_default_obstacles };
-use crate::{MAGE};
-use crate::{MAX_ACTIONS_PER_CHARACTER, MAX_STATUS, NOWHERE, VIEW_DISTANCE, softassert};
-use crate::ResolvedAction::ResolvedAction;
-use crate::actionDefinition::{ TestActionDefinition, ACTION_RESULT_COORDINATES_IDX_INVISIBLE, build_test_action_def, build_move_action };
+use arenalib::{MAGE};
+use arenalib::{MAX_ACTIONS_PER_CHARACTER};
+// use crate::ResolvedAction::ResolvedAction;
+// use crate::actionDefinition::{ build_move_action };
+use arenalib::{apply_action_result_effects, apply_action_pre_calc_effects, validate_action_requirements, build_result_event};
+use arenalib::arena_action_def_builder;
 
-// pub struct Action {
-//     pub action: u8,
-//     pub actor: u8,
-//     pub target_x: u8,
-//     pub target_y: u8,
-// }
-
-pub type Action = [u8; 4];
-
-global ACTION_TYPE: u8 = 0;
-global ACTION_ACTOR: u8 = 1;
-global ACTION_TARGET_X: u8 = 2;
-global ACTION_TARGET_Y: u8 = 3;
-
-pub fn get_action_type(action: Action) -> u8 {
-    action[ACTION_TYPE]
-}
-pub fn get_action_actor(action: Action) -> u8 {
-    action[ACTION_ACTOR]
-}
-pub fn get_action_target_x(action: Action) -> u8 {
-    action[ACTION_TARGET_X]
-}
-pub fn get_action_target_y(action: Action) -> u8 {
-    action[ACTION_TARGET_Y]
-}
-pub fn new_action(action_type: u8, actor: u8, target_x: u8, target_y: u8) -> Action {
-    let mut action: Action = [0; 4];
-    action[ACTION_TYPE] = action_type;
-    action[ACTION_ACTOR] = actor;
-    action[ACTION_TARGET_X] = target_x;
-    action[ACTION_TARGET_Y] = target_y;
-    action
-}
+// use crate::{ACTION_RESULT_COORDINATES_IDX_SELF, ACTION_RESULT_COORDINATES_IDX_TARGET, ACTION_RESULT_COORDINATES_IDX_INVISIBLE};
+// use crate::{SEE_CAST, SEE_DRAW, SEE_RITUAL, SEE_SEARCH_TRAP, RECEIVE_ATTACK, DISARMED_TRAP, ADD_OBSTACLE, WIN};
+// use crate::action_builder;
 
 
-// pub global ACTION_NEEDS_TARGET_FREE_SPACE: u16 = 0;  // u1
-// pub global ACTION_NEEDS_TARGET_IS_NOT_SELF: u16 = 1; // u1
-// pub global ACTION_NEEDS_STATUS_VISIBLE: u16 = 2; // u1
-// pub global ACTION_NEEDS_STATUS_INVISIBLE: u16 = 3; // u1
-// pub global ACTION_NEEDS_STATUS_HIDDEN: u16 = 4; // u1
-// pub global ACTION_SETS_STATUS_HIDDEN: u16 = 5; // u1
-// pub global ACTION_REMOVES_STATUS_HIDDEN: u16 = 6; // u1
-// pub global ACTION_MAX_RANGE: u16 = 7; // u6 // TODO: max_range!
-// pub global ACTION_NEEDS_MIN_STATUS: u16 = 8; // u4
-// pub global ACTION_NEEDS_MAX_STATUS: u16 = 9; // u4
-// pub global ACTION_NEEDED_ENERGY: u16 = 10;    // u4
-// pub global ACTION_EVENT_IS_TRAP: u16 = 11; // u1
-// global ACTION_REQUIREMENTS_FIELD_COUNT: u16 = 12;
-// // ----------- 3 bytes ----------- 10 24bit
-// comptime fn build_action_requirements_def(
-//     action_needs_target_free_space: u8,
-//     action_needs_target_is_not_self: u8,
-//     action_needs_status_visible: u8,
-//     action_needs_status_invisible: u8,
-//     action_needs_status_hidden: u8,
-//     action_sets_status_hidden: u8,
-//     action_removes_status_hidden: u8,
-//     action_max_range: u8,
-//     action_needs_min_status: u8,
-//     action_needs_max_status: u8,
-//     action_needed_energy: u8,
-//     action_event_is_trap: u8
-// ) -> CtString {
-//     assert(action_needs_target_free_space <= 1);
-//     assert(action_needs_target_is_not_self <= 1);
-//     assert(action_needs_status_visible <= 1);
-//     assert(action_needs_status_invisible <= 1);
-//     assert(action_needs_status_hidden <= 1);
-//     assert(action_sets_status_hidden <= 1);
-//     assert(action_removes_status_hidden <= 1);
-//     assert(action_needs_min_status <= MAX_STATUS);
-//     assert(action_needs_max_status <= MAX_STATUS);
-//     assert((action_sets_status_hidden == 0) | (action_removes_status_hidden == 0));
-//     assert(action_event_is_trap <= 1);
-//     f"{action_needs_target_free_space} as u8,{action_needs_target_is_not_self} as u8,{action_needs_status_visible} as u8,{action_needs_status_invisible} as u8,{action_needs_status_hidden} as u8,{action_sets_status_hidden} as u8,{action_removes_status_hidden} as u8,{action_max_range} as u8,{action_needs_min_status} as u8,{action_needs_max_status} as u8,{action_needed_energy} as u8,{action_event_is_trap} as u8".as_ctstring()
-// }
 
-// pub global ACTION_RESULT_EVENT_SEEN_TYPE: u16 =                    ACTION_REQUIREMENTS_FIELD_COUNT;     // u8
-// pub global ACTION_RESULT_EVENT_SEEN_SUBTYPE: u16 =                 ACTION_REQUIREMENTS_FIELD_COUNT + 1; // u8
-// pub global ACTION_RESULT_EVENT_SEEN_VALUE_STATUS_MULTIPLIER: u16 = ACTION_REQUIREMENTS_FIELD_COUNT + 2; // u2
-// pub global ACTION_RESULT_EVENT_SEEN_VALUE_FIXED_ADDITION: u16 =    ACTION_REQUIREMENTS_FIELD_COUNT + 3; // u4
-// pub global ACTION_RESULT_EVENT_SEEN_COORD_IDX: u16 =               ACTION_REQUIREMENTS_FIELD_COUNT + 4; // u2
-// pub global ACTION_RESULT_EVENT_SEEN_RADIUS: u16 =                  ACTION_REQUIREMENTS_FIELD_COUNT + 5; // u8
-// global ACTION_RESULT_EVENT_FIELD_COUNT: u16 = 6; // u8
-// // ----------- 3 bytes ----------- 5
+// global ACTION_TYPE: u8 = 0;
+// global ACTION_ACTOR: u8 = 1;
+// global ACTION_TARGET_X: u8 = 2;
+// global ACTION_TARGET_Y: u8 = 3;
 
-// pub global ACTION_RESULT_EVENT_NOT_SEEN_TYPE: u16 =                    ACTION_REQUIREMENTS_FIELD_COUNT + ACTION_RESULT_EVENT_FIELD_COUNT;     // u8
-// pub global ACTION_RESULT_EVENT_NOT_SEEN_SUBTYPE: u16 =                 ACTION_REQUIREMENTS_FIELD_COUNT + ACTION_RESULT_EVENT_FIELD_COUNT + 1; // u8
-// pub global ACTION_RESULT_EVENT_NOT_SEEN_VALUE_STATUS_MULTIPLIER: u16 = ACTION_REQUIREMENTS_FIELD_COUNT + ACTION_RESULT_EVENT_FIELD_COUNT + 2; // u4
-// pub global ACTION_RESULT_EVENT_NOT_SEEN_VALUE_FIXED_ADDITION: u16 =    ACTION_REQUIREMENTS_FIELD_COUNT + ACTION_RESULT_EVENT_FIELD_COUNT + 3; // u8
-// pub global ACTION_RESULT_EVENT_NOT_SEEN_COORD_IDX: u16 =               ACTION_REQUIREMENTS_FIELD_COUNT + ACTION_RESULT_EVENT_FIELD_COUNT + 4; // u2
-// pub global ACTION_RESULT_EVENT_NOT_SEEN_RADIUS: u16 =                  ACTION_REQUIREMENTS_FIELD_COUNT + ACTION_RESULT_EVENT_FIELD_COUNT + 5; // u8
-// // ----------- 3 bytes ----------- 5
-// comptime fn build_action_event_def(
-//     event_type: u8,
-//     event_subtype: u8,
-//     event_value_status_multiplier: u8,
-//     event_value_fixed_addition: u8,
-//     event_coord_idx: u8,
-//     event_radius: u8
-// ) -> CtString {
-//     assert(event_type < EVENT_COUNT);
-//     assert(event_subtype as u32 < ACTION_COUNT);
-//     assert(event_value_status_multiplier < (STATUS_COUNT / 2));
-//     // assert(event_value_fixed_addition < MAX_STATUS);
-//     assert(event_coord_idx < 4);
-//     f"{event_type} as u8,{event_subtype} as u8,{event_value_status_multiplier} as u8,{event_value_fixed_addition} as u8,{event_coord_idx} as u8, {event_radius} as u8".as_ctstring()
-// }
+global SEEN_EVENT_IDX: u32 = 1;
+global UNSEEN_EVENT_IDX: u32 = 0;
+global WORLD_EVENT_IDX: u32 = 2;
+global SELF_EVENT_IDX: u32 = 3;
 
-// pub global ACTION_RESULT_STATUS_MULTIPLIER: u16 =     ACTION_REQUIREMENTS_FIELD_COUNT + 2 * ACTION_RESULT_EVENT_FIELD_COUNT;     // u1
-// pub global ACTION_RESULT_STATUS_FIXED_ADDITION: u16 = ACTION_REQUIREMENTS_FIELD_COUNT + 2 * ACTION_RESULT_EVENT_FIELD_COUNT + 1; // u4
-// pub global ACTION_MOVE_TO_TARGET: u16 =               ACTION_REQUIREMENTS_FIELD_COUNT + 2 * ACTION_RESULT_EVENT_FIELD_COUNT + 2; // u1
-// pub global ACTION_IS_CONTINUOUS: u16 =                ACTION_REQUIREMENTS_FIELD_COUNT + 2 * ACTION_RESULT_EVENT_FIELD_COUNT + 3; // u1
-// pub global ACTION_NEEDS_PREVIOUS_ACTION: u16 =        ACTION_REQUIREMENTS_FIELD_COUNT + 2 * ACTION_RESULT_EVENT_FIELD_COUNT + 4; // u4
-// // ----------- 2 bytes ----------- 4
-// // => 2 Fields per Character
-// // 8 * u1 + 8 * u4 + 5 * u8 = 8 + 32 + 40 = 80 => 10 bytes => 3 / Field => WAIT is static => 2 Fields per Character
-// global ACTION_RESULT_COORDINATES_IDX_SELF: u8 = 0; // u2
-// global ACTION_RESULT_COORDINATES_IDX_TARGET: u8 = 1; // u2
-// global ACTION_RESULT_COORDINATES_IDX_INVISIBLE: u8 = 2; // u2
-// comptime fn build_action_def(
-//     requirements: CtString,
-//     event_seen: CtString,
-//     event_not_seen: CtString,
-//     status_multiplier: u8,
-//     status_fixed_addition: u8,
-//     move_to_target: u8,
-//     is_continuous: u8,
-//     previous_action: u8
-// ) -> CtString {
-//     assert(status_multiplier < 16);
-//     assert(status_fixed_addition < 16);
-//     assert(move_to_target < 2);
-//     assert(is_continuous < 2);
-//     f"{requirements},{event_seen},{event_not_seen},{status_multiplier} as u8,{status_fixed_addition} as u8,{move_to_target} as u8,{is_continuous} as u8,{previous_action} as u8".as_ctstring()
-// }
-// comptime fn build_test_action_def(
-//     def: CtString,
-//     action_args: Quoted,
-// ) -> Quoted {
-//     let result: Quoted = f"TestActionDefinition {{ register: [{def}], action: new_action({action_args}) }}".quoted_contents();
-//     result
-// }
-// pub comptime fn build_action_def_reg(
-//     action_defs: [[CtString; MAX_ACTIONS_PER_CHARACTER - 1]; MAX_CHARACTERS]
-// ) -> Quoted {
-//     let elements: [CtString; MAX_CHARACTERS] = action_defs.map(|x|x.reduce(|acc, cur|f"{acc},{cur}".as_ctstring()));
-//     let joined = elements.reduce(|acc,cur|f"{acc},{cur}".as_ctstring());
-//     let wait_action = build_wait_action_def();
-//     f"[{wait_action},{joined}]".quoted_contents()
-// }
-
-// global YES: u8 = 1;
-// global NO: u8 = 0;
-// global MIN_STATUS: u8 = 0;
-// global MAX_STATUS: u8 = 15;
-
-// pub global ACTION_DEFINITION_SIZE: u32 = (ACTION_REQUIREMENTS_FIELD_COUNT + 2 * ACTION_RESULT_EVENT_FIELD_COUNT + 5) as u32; // 2 bytes for move_to_target and status_multiplier
-// pub global ACTION_DEFINITION_REGISTER_SIZE: u32 = ACTION_DEFINITION_SIZE * (1 + (MAX_ACTIONS_PER_CHARACTER - 1) * (CLASS_COUNT - 1));
-// pub struct ActionDefinition {
-//     base_index: u16,
-//     action: Action,
-//     register: [u8; ACTION_DEFINITION_REGISTER_SIZE]
-// }
-
-// impl ActionDefinition {
-//     pub fn new(action: Action, register: [u8; ACTION_DEFINITION_REGISTER_SIZE]) -> ActionDefinition {
-//         ActionDefinition {
-//             base_index: get_action_base_index(get_action_actor(action), get_action_type(action)),
-//             action: action,
-//             register: register
-//         }
-//     }
-// }
-
-// // pub type ActionDefinitionRegister = 
-// comptime fn no_requirements() -> CtString {
-//     build_action_requirements_def(
-//         NO,
-//         NO, 
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         255 as u8,
-//         MIN_STATUS,
-//         MAX_STATUS,
-//         0 as u8,
-//         NO)
-// }
-// comptime fn no_event() -> CtString {
-//     build_action_event_def(NO_EVENT, NO_EVENT, 0 as u8, 0 as u8, ACTION_RESULT_COORDINATES_IDX_INVISIBLE, 0 as u8)
-// }
-// pub comptime fn build_wait_action_def() -> CtString {
-//     build_action_def(
-//         no_requirements(),
-//         no_event(),
-//         no_event(),
-//         1 as u8,
-//         0 as u8,
-//         ACTION_RESULT_COORDINATES_IDX_SELF,
-//         NO,
-//         WAIT
-//     )
-// }
-// // pub global WAIT_ACTION: ActionDefinition = comptime { let x = build_wait_action_def(); f"[{x}]".quoted_contents() };
-// pub comptime fn build_sneak_action(energy: u8) -> CtString { build_action_def(
-//     build_action_requirements_def(
-//         YES,
-//         NO,
-//         NO,
-//         YES,
-//         NO,
-//         YES,
-//         NO,
-//         1 as u8,
-//         MIN_STATUS,
-//         MAX_STATUS,
-//         energy,
-//         NO),
-//     no_event(), // TODO: not sure if on-seen we should not send a move event instead - that way one could sneak and stay hidden, but not sneak while visible
-//     no_event(),
-//     0 as u8,
-//     0 as u8,
-//     ACTION_RESULT_COORDINATES_IDX_TARGET,
-//     NO,
-//     WAIT)
-// }
-// pub comptime fn build_move_action(energy: u8) -> CtString { build_action_def(
-//     build_action_requirements_def(
-//         YES,
-//         YES,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         YES,
-//         1 as u8,
-//         MIN_STATUS,
-//         MAX_STATUS,
-//         energy,
-//         NO),
-//     build_action_event_def(SEE_MOVE, NO, 0 as u8, 0 as u8, ACTION_RESULT_COORDINATES_IDX_TARGET, 0 as u8),
-//     no_event(),
-//     0 as u8,
-//     0 as u8,
-//     ACTION_RESULT_COORDINATES_IDX_TARGET,
-//     NO,
-//     WAIT)
-// }
-// pub comptime fn build_cast_action(this_action_id: u8, energy: u8, class: u8) -> CtString { build_action_def(
-//     build_action_requirements_def(
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         YES,
-//         255 as u8,
-//         MIN_STATUS,
-//         MAX_STATUS,
-//         energy,
-//         NO),
-//     build_action_event_def(SEE_CAST, class, 0 as u8, 0 as u8, ACTION_RESULT_COORDINATES_IDX_SELF, 0 as u8),
-//     no_event(),
-//     1 as u8,
-//     1 as u8,
-//     ACTION_RESULT_COORDINATES_IDX_SELF,
-//     YES,
-//     this_action_id)
-// }
-// pub comptime fn build_ritual_action(this_action_id: u8, energy: u8) -> CtString { build_action_def(
-//     build_action_requirements_def(
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         YES,
-//         255 as u8,
-//         RITUAL_ROUNDS_FOR_WIN,
-//         MAX_STATUS,
-//         energy,
-//         NO),
-//     build_action_event_def(WIN, WIN_BY_RITUAL, 0 as u8, 0 as u8, ACTION_RESULT_COORDINATES_IDX_SELF, 255 as u8),
-//     build_action_event_def(WIN, WIN_BY_RITUAL, 0 as u8, 0 as u8, ACTION_RESULT_COORDINATES_IDX_INVISIBLE, 255 as u8),
-//     0 as u8,
-//     0 as u8,
-//     ACTION_RESULT_COORDINATES_IDX_SELF,
-//     YES,
-//     this_action_id)
-// }
-// pub comptime fn build_evocation_action(cast_action_id: u8, energy: u8, evocation_type: u8, range: u8, radius: u8, damage: u8, damage_upcast: u8, min_cast_time: u8, max_cast_time: u8) -> CtString { build_action_def(
-//     build_action_requirements_def(
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         YES,
-//         range,
-//         min_cast_time,
-//         max_cast_time,
-//         energy,
-//         NO), // TODO: Maybe set this to handle friendly fire???
-//     build_action_event_def(RECEIVE_ATTACK, evocation_type, damage_upcast, damage, ACTION_RESULT_COORDINATES_IDX_TARGET, radius),
-//     build_action_event_def(RECEIVE_ATTACK, evocation_type, damage_upcast, damage, ACTION_RESULT_COORDINATES_IDX_TARGET, radius),
-//     0 as u8,
-//     0 as u8,
-//     ACTION_RESULT_COORDINATES_IDX_SELF,
-//     YES,
-//     cast_action_id)
-// }
-// pub comptime fn build_search_action(energy: u8, range: u8) -> CtString { build_action_def(
-//     build_action_requirements_def(
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         range,
-//         MIN_STATUS,
-//         MAX_STATUS,
-//         energy,
-//         NO),
-//     build_action_event_def(SEE_SEARCH_TRAP, NO, 0 as u8, 0 as u8, ACTION_RESULT_COORDINATES_IDX_TARGET, 1 as u8),
-//     build_action_event_def(SEE_SEARCH_TRAP, NO, 0 as u8, 0 as u8, ACTION_RESULT_COORDINATES_IDX_TARGET, 1 as u8),
-//     0 as u8,
-//     0 as u8,
-//     ACTION_RESULT_COORDINATES_IDX_SELF,
-//     NO,
-//     WAIT)
-// }
-// pub comptime fn build_attack_action(energy: u8, damage_type: u8, range: u8, damage: u8) -> CtString { build_action_def(
-//     build_action_requirements_def(
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         YES,
-//         range,
-//         MIN_STATUS,
-//         MAX_STATUS,
-//         energy,
-//         NO),
-//     build_action_event_def(RECEIVE_ATTACK, damage_type, 0 as u8, damage, ACTION_RESULT_COORDINATES_IDX_TARGET, 0 as u8),
-//     build_action_event_def(RECEIVE_ATTACK, damage_type, 0 as u8, damage, ACTION_RESULT_COORDINATES_IDX_TARGET, 0 as u8),
-//     0 as u8,
-//     0 as u8,
-//     ACTION_RESULT_COORDINATES_IDX_SELF,
-//     NO,
-//     WAIT)
-// }
-// pub comptime fn build_draw_action(this_action_id: u8, energy: u8, range: u8, class: u8) -> CtString { build_action_def(
-//     build_action_requirements_def(
-//         NO,
-//         YES,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         range,
-//         MIN_STATUS,
-//         MAX_STATUS,
-//         energy,
-//         NO),
-//     build_action_event_def(SEE_DRAW, class, 0 as u8, 0 as u8, ACTION_RESULT_COORDINATES_IDX_SELF, 0 as u8),
-//     no_event(),
-//     1 as u8,
-//     1 as u8,
-//     ACTION_RESULT_COORDINATES_IDX_SELF,
-//     YES,
-//     this_action_id)
-// }
-// pub comptime fn build_shoot_action(draw_action_id: u8, energy: u8, damage_type: u8, range: u8, damage: u8, damage_upcast: u8, min_cast_time: u8, max_cast_time: u8) -> CtString { build_action_def(
-//     build_action_requirements_def(
-//         NO,
-//         YES,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         YES,
-//         range,
-//         min_cast_time,
-//         max_cast_time,
-//         energy,
-//         NO),
-//     build_action_event_def(RECEIVE_ATTACK, damage_type, damage_upcast, damage, ACTION_RESULT_COORDINATES_IDX_TARGET, 0 as u8),
-//     build_action_event_def(RECEIVE_ATTACK, damage_type, damage_upcast, damage, ACTION_RESULT_COORDINATES_IDX_TARGET, 0 as u8),
-//     0 as u8,
-//     0 as u8,
-//     ACTION_RESULT_COORDINATES_IDX_SELF,
-//     YES,
-//     draw_action_id)
-// }
-// pub comptime fn build_disarm_trap_action(energy: u8, range: u8) -> CtString { build_action_def(
-//     build_action_requirements_def(
-//         NO,
-//         YES,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         NO,
-//         range,
-//         MIN_STATUS,
-//         MAX_STATUS,
-//         energy,
-//         NO),
-//     build_action_event_def(DISARMED_TRAP, NO, 0 as u8, 0 as u8, ACTION_RESULT_COORDINATES_IDX_TARGET, 0 as u8),
-//     build_action_event_def(DISARMED_TRAP, NO, 0 as u8, 0 as u8, ACTION_RESULT_COORDINATES_IDX_TARGET, 0 as u8),
-//     0 as u8,
-//     0 as u8,
-//     ACTION_RESULT_COORDINATES_IDX_SELF,
-//     NO,
-//     WAIT)
-// }
-// pub comptime fn build_set_trap_action(energy: u8, range: u8) -> CtString { build_action_def(
-//     build_action_requirements_def(
-//         YES,
-//         NO,
-//         NO,
-//         YES,
-//         NO,
-//         NO,
-//         NO,
-//         range,
-//         MIN_STATUS,
-//         MAX_STATUS,
-//         energy,
-//         YES),
-//     no_event(),
-//     build_action_event_def(ADD_OBSTACLE, TRAP, 0 as u8, 50 as u8, ACTION_RESULT_COORDINATES_IDX_TARGET, 0 as u8),
-//     0 as u8,
-//     0 as u8,
-//     ACTION_RESULT_COORDINATES_IDX_SELF,
-//     NO,
-//     WAIT)
-// }
-
-// pub fn get_action_base_index(actor_id: u8, action_idx: u8) -> u16 {
-//     if (action_idx == 0) | (action_idx as u32 >= MAX_ACTIONS_PER_CHARACTER) | (actor_id as u32 >= MAX_CHARACTERS) {
-//         0 as u16
-//     } else {
-//         (actor_id as u16 * (MAX_ACTIONS_PER_CHARACTER - 1) as u16 + action_idx as u16) * ACTION_DEFINITION_SIZE as u16
-//     }
-// }
-
-// fn get_action_needs_target_free_space(action: ActionDefinition) -> bool {
-//     action.register[action.base_index + ACTION_NEEDS_TARGET_FREE_SPACE] == 1
-// }
-// fn get_action_needs_target_is_not_self(action: ActionDefinition) -> bool {
-//     action.register[action.base_index + ACTION_NEEDS_TARGET_IS_NOT_SELF] == 1
-// }
-// fn get_action_needs_status_visible(action: ActionDefinition) -> bool {
-//     action.register[action.base_index + ACTION_NEEDS_STATUS_VISIBLE] == 1
-// }
-// fn get_action_needs_status_invisible(action: ActionDefinition) -> bool {
-//     action.register[action.base_index + ACTION_NEEDS_STATUS_INVISIBLE] == 1
-// }
-// fn get_action_needs_status_hidden(action: ActionDefinition) -> bool {
-//     action.register[action.base_index + ACTION_NEEDS_STATUS_HIDDEN] == 1
-// }
-// fn get_action_sets_status_hidden(action: ActionDefinition) -> bool {
-//     action.register[action.base_index + ACTION_SETS_STATUS_HIDDEN] == 1
-// }
-// fn get_action_removes_status_hidden(action: ActionDefinition) -> bool {
-//     action.register[action.base_index + ACTION_REMOVES_STATUS_HIDDEN] == 1
-// }
-// fn get_action_max_range(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_MAX_RANGE]
-// }
-// fn get_action_needs_min_status(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_NEEDS_MIN_STATUS]
-// }
-// fn get_action_needs_max_status(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_NEEDS_MAX_STATUS]
-// }
-// fn get_action_needed_energy(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_NEEDED_ENERGY]
-// }
-// fn get_action_unseen_event_is_internal(action: ActionDefinition) -> bool {
-//     action.register[action.base_index + ACTION_EVENT_IS_TRAP] == 1
-// }
-// fn get_action_result_event_seen_type(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_RESULT_EVENT_SEEN_TYPE]
-// }
-// fn get_action_result_event_seen_subtype(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_RESULT_EVENT_SEEN_SUBTYPE]
-// }
-// fn get_action_result_event_seen_value_status_multiplier(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_RESULT_EVENT_SEEN_VALUE_STATUS_MULTIPLIER]
-// }
-// fn get_action_result_event_seen_value_fixed_addition(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_RESULT_EVENT_SEEN_VALUE_FIXED_ADDITION]
-// }
-// fn get_action_result_event_seen_coord_idx(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_RESULT_EVENT_SEEN_COORD_IDX]
-// }
-// fn get_action_result_event_seen_radius(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_RESULT_EVENT_SEEN_RADIUS]
-// }
-// fn get_action_result_event_not_seen_type(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_RESULT_EVENT_NOT_SEEN_TYPE]
-// }
-// fn get_action_result_event_not_seen_subtype(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_RESULT_EVENT_NOT_SEEN_SUBTYPE]
-// }
-// fn get_action_result_event_not_seen_value_status_multiplier(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_RESULT_EVENT_NOT_SEEN_VALUE_STATUS_MULTIPLIER]
-// }
-// fn get_action_result_event_not_seen_value_fixed_addition(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_RESULT_EVENT_NOT_SEEN_VALUE_FIXED_ADDITION]
-// }
-// fn get_action_result_event_not_seen_coord_idx(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_RESULT_EVENT_NOT_SEEN_COORD_IDX]
-// }
-// fn get_action_result_event_not_seen_radius(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_RESULT_EVENT_NOT_SEEN_RADIUS]
-// }
-// fn get_action_result_status_multiplier(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_RESULT_STATUS_MULTIPLIER]
-// }
-// fn get_action_result_status_fixed_addition(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_RESULT_STATUS_FIXED_ADDITION]
-// }
-// fn get_action_move_to_target(action: ActionDefinition) -> u1 {
-//     action.register[action.base_index + ACTION_MOVE_TO_TARGET] as u1
-// }
-// fn get_action_is_continuous(action: ActionDefinition) -> bool {
-//     action.register[action.base_index + ACTION_IS_CONTINUOUS] == 1
-// }
-// fn get_action_needs_previous_action(action: ActionDefinition) -> u8 {
-//     action.register[action.base_index + ACTION_NEEDS_PREVIOUS_ACTION] as u8
-// }
-
-// pub trait ResolvedAction {
-//     fn get_action_needs_target_free_space(self) -> bool;
-//     fn get_action_needs_target_is_not_self(self) -> bool;
-//     fn get_action_needs_status_visible(self) -> bool;
-//     fn get_action_needs_status_invisible(self) -> bool;
-//     fn get_action_needs_status_hidden(self) -> bool;
-//     fn get_action_sets_status_hidden(self) -> bool;
-//     fn get_action_removes_status_hidden(self) -> bool;
-//     fn get_action_max_range(self) -> u8;
-//     fn get_action_needs_min_status(self) -> u8;
-//     fn get_action_needs_max_status(self) -> u8;
-//     fn get_action_needed_energy(self) -> u8;
-//     fn get_action_unseen_event_is_internal(self) -> bool;
-//     fn get_action_result_event_seen_type(self) -> u8;
-//     fn get_action_result_event_seen_subtype(self) -> u8;
-//     fn get_action_result_event_seen_value_status_multiplier(self) -> u8;
-//     fn get_action_result_event_seen_value_fixed_addition(self) -> u8;
-//     fn get_action_result_event_seen_coord_idx(self) -> u8;
-//     fn get_action_result_event_seen_radius(self) -> u8;
-//     fn get_action_result_event_not_seen_type(self) -> u8;
-//     fn get_action_result_event_not_seen_subtype(self) -> u8;
-//     fn get_action_result_event_not_seen_value_status_multiplier(self) -> u8;
-//     fn get_action_result_event_not_seen_value_fixed_addition(self) -> u8;
-//     fn get_action_result_event_not_seen_coord_idx(self) -> u8;
-//     fn get_action_result_event_not_seen_radius(self) -> u8;
-//     fn get_action_result_status_multiplier(self) -> u8;
-//     fn get_action_result_status_fixed_addition(self) -> u8;
-//     fn get_action_move_to_target(self) -> u1;
-//     fn get_action_is_continuous(self) -> bool;
-//     fn get_action_needs_previous_action(self) -> u8;
-
-//     fn get_action_type(self) -> u8;
-//     fn get_action_target_x(self) -> u8;
-//     fn get_action_target_y(self) -> u8;
-// }
-
-// impl ResolvedAction for ActionDefinition {
-//     fn get_action_needs_target_free_space(self: ActionDefinition) -> bool {
-//         self.register[self.base_index + ACTION_NEEDS_TARGET_FREE_SPACE] == 1
-//     }
-//     fn get_action_needs_target_is_not_self(self: ActionDefinition) -> bool {
-//         self.register[self.base_index + ACTION_NEEDS_TARGET_IS_NOT_SELF] == 1
-//     }
-//     fn get_action_needs_status_visible(self: ActionDefinition) -> bool {
-//         self.register[self.base_index + ACTION_NEEDS_STATUS_VISIBLE] == 1
-//     }
-//     fn get_action_needs_status_invisible(self: ActionDefinition) -> bool {
-//         self.register[self.base_index + ACTION_NEEDS_STATUS_INVISIBLE] == 1
-//     }
-//     fn get_action_needs_status_hidden(self: ActionDefinition) -> bool {
-//         self.register[self.base_index + ACTION_NEEDS_STATUS_HIDDEN] == 1
-//     }
-//     fn get_action_sets_status_hidden(self: ActionDefinition) -> bool {
-//         self.register[self.base_index + ACTION_SETS_STATUS_HIDDEN] == 1
-//     }
-//     fn get_action_removes_status_hidden(self: ActionDefinition) -> bool {
-//         self.register[self.base_index + ACTION_REMOVES_STATUS_HIDDEN] == 1
-//     }
-//     fn get_action_max_range(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_MAX_RANGE]
-//     }
-//     fn get_action_needs_min_status(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_NEEDS_MIN_STATUS]
-//     }
-//     fn get_action_needs_max_status(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_NEEDS_MAX_STATUS]
-//     }
-//     fn get_action_needed_energy(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_NEEDED_ENERGY]
-//     }
-//     fn get_action_unseen_event_is_internal(self: ActionDefinition) -> bool {
-//         self.register[self.base_index + ACTION_EVENT_IS_TRAP] == 1
-//     }
-//     fn get_action_result_event_seen_type(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_RESULT_EVENT_SEEN_TYPE]
-//     }
-//     fn get_action_result_event_seen_subtype(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_RESULT_EVENT_SEEN_SUBTYPE]
-//     }
-//     fn get_action_result_event_seen_value_status_multiplier(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_RESULT_EVENT_SEEN_VALUE_STATUS_MULTIPLIER]
-//     }
-//     fn get_action_result_event_seen_value_fixed_addition(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_RESULT_EVENT_SEEN_VALUE_FIXED_ADDITION]
-//     }
-//     fn get_action_result_event_seen_coord_idx(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_RESULT_EVENT_SEEN_COORD_IDX]
-//     }
-//     fn get_action_result_event_seen_radius(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_RESULT_EVENT_SEEN_RADIUS]
-//     }
-//     fn get_action_result_event_not_seen_type(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_RESULT_EVENT_NOT_SEEN_TYPE]
-//     }
-//     fn get_action_result_event_not_seen_subtype(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_RESULT_EVENT_NOT_SEEN_SUBTYPE]
-//     }
-//     fn get_action_result_event_not_seen_value_status_multiplier(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_RESULT_EVENT_NOT_SEEN_VALUE_STATUS_MULTIPLIER]
-//     }
-//     fn get_action_result_event_not_seen_value_fixed_addition(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_RESULT_EVENT_NOT_SEEN_VALUE_FIXED_ADDITION]
-//     }
-//     fn get_action_result_event_not_seen_coord_idx(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_RESULT_EVENT_NOT_SEEN_COORD_IDX]
-//     }
-//     fn get_action_result_event_not_seen_radius(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_RESULT_EVENT_NOT_SEEN_RADIUS]
-//     }
-//     fn get_action_result_status_multiplier(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_RESULT_STATUS_MULTIPLIER]
-//     }
-//     fn get_action_result_status_fixed_addition(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_RESULT_STATUS_FIXED_ADDITION]
-//     }
-//     fn get_action_move_to_target(self: ActionDefinition) -> u1 {
-//         self.register[self.base_index + ACTION_MOVE_TO_TARGET] as u1
-//     }
-//     fn get_action_is_continuous(self: ActionDefinition) -> bool {
-//         self.register[self.base_index + ACTION_IS_CONTINUOUS] == 1
-//     }
-//     fn get_action_needs_previous_action(self: ActionDefinition) -> u8 {
-//         self.register[self.base_index + ACTION_NEEDS_PREVIOUS_ACTION]
-//     }
-
-//     fn get_action_target_x(self) -> u8 {
-//         get_action_target_x(self.action)
-//     }
-//     fn get_action_target_y(self) -> u8 {
-//         get_action_target_y(self.action)
-//     }
-//     fn get_action_type(self) -> u8 {
-//         get_action_type(self.action)
-//     }
-// }
-
-
-// pub fn validate_action(action: Action, c: Character, energy: u8, advance: u8, enemy_advance: u8, my_obstacles_parsed: [Obstacle; MAX_OBSTACLES], their_obstacles: [Obstacle]) -> bool {
-//     let action_def = c.resolve_action(action.register[action.base_index + ACTION_TYPE]);
-
-//     let status = c.status * (
-//         ((!get_action_is_continuous(action_def)) as u8 & get_action_result_status_multiplier(action_def)) | 
-//         (get_action_is_continuous(action_def) & (get_action_needs_previous_action(action_def) == c.last_action)) as u8);
-
-//     // pub global ACTION_NEEDS_TARGET_FREE_SPACE: u8 = 0;  // u1
-//     let target_is_free_space_valid = !get_action_needs_target_free_space(action_def) | can_move_to(advance, get_action_target_x(action), get_action_target_y(action), my_obstacles_parsed, their_obstacles);
-//     // pub global ACTION_NEEDS_TARGET_IS_NOT_SELF: u8 = 1; // u1
-//     let target_is_not_self_valid = !get_action_needs_target_is_not_self(action_def) | (c.x != get_action_target_x(action)) | (c.y != get_action_target_y(action));
-//     // pub global ACTION_NEEDS_STATUS_HIDDEN: u8 = 4; // u1
-//     let char_is_hidden = c.is_hidden == 1;
-//     let char_is_hidden_valid = !get_action_needs_status_hidden(action_def) | char_is_hidden;
-//     // pub global ACTION_NEEDS_STATUS_VISIBLE: u8 = 2; // u1
-//     let char_is_in_view_range = is_visible(enemy_advance, c.x);
-//     let char_is_fully_visible = char_is_in_view_range & !char_is_hidden;
-//     let char_is_fully_visible_valid = !get_action_needs_status_visible(action_def) | char_is_fully_visible;
-//     // pub global ACTION_NEEDS_STATUS_INVISIBLE: u8 = 3; // u1
-//     let char_invisible_valid = !get_action_needs_status_invisible(action_def) | !char_is_in_view_range;
-//     // pub global ACTION_MAX_RANGE: u8 = 7; // u6 // TODO: max_range!
-//     let max_range_part = get_action_max_range(action_def) as u32;
-//     let max_range = max_range_part * max_range_part;
-//     let distance = get_distance(c.x, c.y, get_action_target_x(action), get_action_target_y(action));
-//     let max_range_valid  = distance <= max_range;
-//     // pub global ACTION_NEEDS_MIN_STATUS: u8 = 8; // u4
-//     let min_status_valid = get_action_needs_min_status(action_def) <= status;
-//     // pub global ACTION_NEEDS_MAX_STATUS: u8 = 9; // u4
-//     let max_status_valid = get_action_needs_max_status(action_def) >= status;
-//     // pub global ACTION_NEEDED_ENERGY: u8 = 10;    // u4
-//     let energy_valid = get_action_needed_energy(action_def) <= energy;
-    
-//     target_is_free_space_valid & target_is_not_self_valid & char_is_hidden_valid & char_is_fully_visible_valid & char_invisible_valid & max_range_valid & min_status_valid & max_status_valid & energy_valid
-// }
-
-
-// TODO: action type as global struct & impl
-//pub impl Action {
-    // fn from_field(field: Field) -> Action {
-    //     Action {
-    //         action: field as u8,
-    //         actor: (field / 0x100) as u8,
-    //         target_x: (field / 0x10000) as u8,
-    //         target_y: (field / 0x1000000) as u8,
-    //     }
-    // }
-
-    // fn to_field(self) -> Field {
-    //     action.register[action.base_index + ACTION_ACTION] as Field + (get_action_actor(action) as Field) * 0x100 + (get_action_target_x(action) as Field) * 0x10000 + (get_action_target_y(action) as Field) * 0x1000000
-    // }
-
-pub fn execute_action<T>(
-    action: T,
+pub fn execute_action(
+    action: Action,
     enemy_advance: u8,
-    c: Character,
-    energy: u8,
+    actor: Character,
+    mut energy: u8,
     my_obstacles: [Obstacle; MAX_OBSTACLES],
     their_obstacles: [Obstacle]
-) -> (bool, Event, Event, Character, u8) where T: ResolvedAction {
+) -> (bool, Event, Event, Event, Character, u8) /*where T: ResolvedAction */{
+  let enemy_advance = if enemy_advance >= WIDTH { 0 } else { WIDTH - enemy_advance - 1 };
     //let action_def = c.resolve_action(action.register[action.base_index + ACTION_TYPE]);
         //let mut result_event: Event = build_std_event(NO_EVENT, c.id, 0, 0);
         //let mut result_char = c;
@@ -822,128 +107,186 @@ pub fn execute_action<T>(
 
     //let action_type = action.get_action_type(action);
     //let action_def = c.resolve_action(action_type);
-    let action_type = action.get_action_type();
+    let action_type = get_action_type(action);
 
-    let action_target_x = action.get_action_target_x();
-    let action_target_y = action.get_action_target_y();
-    let c_x = c.get_x();
-    let c_y = c.get_y();
-    let distance = get_distance(c_x, c_y, action_target_x, action_target_y);
+    let actor_id = actor.get_id();
+    let actor_x = actor.get_x();
+    let actor_y = actor.get_y();
+    let actor_target_x = actor.get_target_x();
+    let actor_target_y = actor.get_target_y();
+    let actor_last_action = actor.get_last_action();
+    let (action_def_valid, action_def) = actor.get_action(action_type);
+    softassert!(quote { is_valid }, quote { action_def_valid }, quote { f"Failed to fetch action def of {action_type}" });
 
-    let is_continuous = action.get_action_is_continuous();
-    let is_not_interrupted = (
-        ((!is_continuous) & (action.get_action_result_status_multiplier() != 0)) | // that's the ID of the wait action => leave status, but not continuous
-        ((is_continuous) & (action.get_action_needs_previous_action() == c.last_action) & (action_target_x == c.get_target_x()) & (action_target_y == c.get_target_y()))
-    );
-    let status = c.status * is_not_interrupted as u8;
+    let action_target_x = get_action_target_x(action);
+    let action_target_y = get_action_target_y(action);
+    let distance = get_distance(actor_x, actor_y, action_target_x, action_target_y);
 
-    // pub global ACTION_NEEDS_TARGET_FREE_SPACE: u8 = 0;  // u1
-    let target_is_free_space_valid = !action.get_action_needs_target_free_space() | can_move_to(distance, action_target_x, action_target_y, my_obstacles, their_obstacles);
-    softassert!(quote { is_valid }, quote { target_is_free_space_valid }, quote { f"Target space ({action_target_x},{action_target_y}) cannot be moved to: {VIEW_DISTANCE},{my_obstacles},{their_obstacles}" });
+    // let is_continuous = action.get_action_is_continuous();
+    // let is_not_interrupted = (
+    //     ((!is_continuous) & (action.get_action_result_status_multiplier() != 0)) | // that's the ID of the wait action => leave status, but not continuous
+    //     ((is_continuous) & (action.get_action_req_previous_action() == c.last_action) & (action_target_x == c.get_target_x()) & (action_target_y == c.get_target_y()))
+    // );
+
+
+    let mut actor_progress = actor.get_progress();
+    let mut actor_is_hidden = actor.get_is_hidden() == 1;
+    let actor_is_in_view_range = is_visible(enemy_advance, actor_x);
+    // let max_range_part = get_action_req_max_range(action) as u16;
+    // let mut actor_max_range = max_range_part * max_range_part;
+    let mut is_not_interrupted = true;
+    let mut actor_damage_mod = actor.get_damage_mod();
+    let mut actor_status = actor.get_status();
+    // ~200 gates
+    apply_action_pre_calc_effects!(quote { action_def });
+
+
+///////////////////////////
+    // ~4000 gates
+    validate_action_requirements!(quote { is_valid }, quote { action_def });
+    // // pub global ACTION_NEEDS_TARGET_FREE_SPACE: u8 = 0;  // u1
+    // let target_is_free_space_valid = !action.get_action_req_target_free_space() | can_move_to(distance, action_target_x, action_target_y, my_obstacles, their_obstacles);
+    // softassert!(quote { is_valid }, quote { target_is_free_space_valid }, quote { f"Target space ({action_target_x},{action_target_y}) cannot be moved to: {VIEW_DISTANCE},{my_obstacles},{their_obstacles}" });
     
-    // pub global ACTION_NEEDS_TARGET_IS_NOT_SELF: u8 = 1; // u1
-    let target_is_not_self_valid = !action.get_action_needs_target_is_not_self() | (c_x != action_target_x) | (c_y != action_target_y);
-    softassert!(quote { is_valid }, quote { target_is_not_self_valid }, quote { f"Target cannot be self ({action_target_x},{action_target_y})" });
+    // // pub global ACTION_NEEDS_TARGET_IS_NOT_SELF: u8 = 1; // u1
+    // let target_is_not_self_valid = !action.get_action_req_target_is_not_self() | (c_x != action_target_x) | (c_y != action_target_y);
+    // softassert!(quote { is_valid }, quote { target_is_not_self_valid }, quote { f"Target cannot be self ({action_target_x},{action_target_y})" });
 
-    // pub global ACTION_NEEDS_STATUS_HIDDEN: u8 = 4; // u1
-    let char_is_hidden = c.is_hidden == 1;
-    let char_is_hidden_valid = !action.get_action_needs_status_hidden() | char_is_hidden;
-    softassert!(quote { is_valid }, quote { char_is_hidden_valid }, quote { f"Character needs to be hidden to perform action {action_type}" });
+    // // pub global ACTION_NEEDS_STATUS_HIDDEN: u8 = 4; // u1
+    // let char_is_hidden = c.is_hidden == 1;
+    // let char_is_hidden_valid = !action.get_action_req_status_hidden() | char_is_hidden;
+    // softassert!(quote { is_valid }, quote { char_is_hidden_valid }, quote { f"Character needs to be hidden to perform action {action_type}" });
     
-    // pub global ACTION_NEEDS_STATUS_VISIBLE: u8 = 2; // u1
-    let char_is_in_view_range = is_visible(enemy_advance, c_x);
-    let char_is_fully_visible = char_is_in_view_range & !char_is_hidden;
-    let char_is_fully_visible_valid = !action.get_action_needs_status_visible() | char_is_fully_visible;
-    softassert!(quote { is_valid }, quote { char_is_fully_visible_valid }, quote { f"Character must be fully visible for action {action_type}: in_view_range: {char_is_in_view_range} & !hidden {char_is_hidden} for enemy_advance {enemy_advance} @ {c_x}" });
+    // // pub global ACTION_NEEDS_STATUS_VISIBLE: u8 = 2; // u1
+    // let char_is_in_view_range = is_visible(enemy_advance, c_x);
+    // let char_is_fully_visible = char_is_in_view_range & !char_is_hidden;
+    // let char_is_fully_visible_valid = !action.get_action_req_status_visible() | char_is_fully_visible;
+    // softassert!(quote { is_valid }, quote { char_is_fully_visible_valid }, quote { f"Character must be fully visible for action {action_type}: in_view_range: {char_is_in_view_range} & !hidden {char_is_hidden} for enemy_advance {enemy_advance} @ {c_x}" });
 
-    // pub global ACTION_NEEDS_STATUS_INVISIBLE: u8 = 3; // u1
-    let char_invisible_valid = !action.get_action_needs_status_invisible() | !char_is_in_view_range | char_is_hidden;
-    softassert!(quote { is_valid }, quote { char_invisible_valid }, quote { f"Character must not be visible to perform action {action_type}: !in_view_range: {char_is_in_view_range} || hidden: {char_is_hidden} for enemy_advance {enemy_advance} @ {c_x}" });
+    // // pub global ACTION_NEEDS_STATUS_INVISIBLE: u8 = 3; // u1
+    // let char_invisible_valid = !action.get_action_req_status_invisible() | !char_is_in_view_range | char_is_hidden;
+    // softassert!(quote { is_valid }, quote { char_invisible_valid }, quote { f"Character must not be visible to perform action {action_type}: !in_view_range: {char_is_in_view_range} || hidden: {char_is_hidden} for enemy_advance {enemy_advance} @ {c_x}" });
 
-    // pub global ACTION_MAX_RANGE: u8 = 7; // u6 // TODO: max_range!
-    let max_range_part = action.get_action_max_range() as u16;
-    let max_range = max_range_part * max_range_part;
-    let max_range_valid  = distance <= max_range;
-    softassert!(quote { is_valid }, quote { max_range_valid }, quote { f"Character is out of range! Distance: {distance} > {max_range}: {{{c_x},{c_y}}} - {{{action_target_x},{action_target_y}}} with {max_range_part}" });
+    // // pub global ACTION_MAX_RANGE: u8 = 7; // u6 // TODO: max_range!
+    // let max_range_part = action.get_action_req_max_range() as u16;
+    // let max_range = max_range_part * max_range_part;
+    // let max_range_valid  = distance <= max_range;
+    // softassert!(quote { is_valid }, quote { max_range_valid }, quote { f"Character is out of range! Distance: {distance} > {max_range}: {{{c_x},{c_y}}} - {{{action_target_x},{action_target_y}}} with {max_range_part}" });
 
-    // pub global ACTION_NEEDS_MIN_STATUS: u8 = 8; // u4
-    let min_status = action.get_action_needs_min_status();
-    let min_status_valid = min_status <= status;
-    softassert!(quote { is_valid }, quote { min_status_valid }, quote { f"Character needs min status {min_status} to perform action {action_type}, but only has {status}" });
+    // // pub global ACTION_NEEDS_MIN_STATUS: u8 = 8; // u4
+    // let min_status = action.get_action_req_min_status();
+    // let min_status_valid = min_status <= status;
+    // softassert!(quote { is_valid }, quote { min_status_valid }, quote { f"Character needs min status {min_status} to perform action {action_type}, but only has {status}" });
 
-    // pub global ACTION_NEEDS_MAX_STATUS: u8 = 9; // u4
-    let max_status = action.get_action_needs_max_status();
-    let max_status_valid = max_status >= status;
-    softassert!(quote { is_valid }, quote { max_status_valid }, quote { f"Character cannot have a higher status than {max_status} to perform action {action_type}: got {status}" });
+    // // pub global ACTION_NEEDS_MAX_STATUS: u8 = 9; // u4
+    // let max_status = action.get_action_req_max_status();
+    // let max_status_valid = max_status >= status;
+    // softassert!(quote { is_valid }, quote { max_status_valid }, quote { f"Character cannot have a higher status than {max_status} to perform action {action_type}: got {status}" });
 
-    // pub global ACTION_NEEDED_ENERGY: u8 = 10;    // u4
-    let required_energy = action.get_action_needed_energy();
-    let energy_valid = required_energy <= energy;
-    softassert!(quote { is_valid }, quote { energy_valid }, quote { f"Character has insufficient energy left to perform action {action_type}: {energy} < {required_energy}" });
-    
+    // // pub global ACTION_NEEDED_ENERGY: u8 = 10;    // u4
+    // let required_energy = action.get_action_req_energy();
+    // let energy_valid = required_energy <= energy;
+    // softassert!(quote { is_valid }, quote { energy_valid }, quote { f"Character has insufficient energy left to perform action {action_type}: {energy} < {required_energy}" });
+    //////////////////////
     
 
         let coords = [
-            (c_x, c_y),
+            (actor_x, actor_y),
             (action_target_x, action_target_y),
-            (NOWHERE, NOWHERE),
             (NOWHERE, NOWHERE),
         ];
 
-        // CALCULATE EVENTS
-        let seen_event_value = status as u32 * action.get_action_result_event_seen_value_status_multiplier() as u32 + action.get_action_result_event_seen_value_fixed_addition() as u32;
-        softassert!(quote { is_valid }, quote { seen_event_value <= 255 as u32 }, quote { f"Invalid event value (seen): {seen_event_value} does not fit in u8!" });
-
-        let unseen_event_value = status as u32 * action.get_action_result_event_not_seen_value_status_multiplier() as u32 + action.get_action_result_event_not_seen_value_fixed_addition() as u32;
-        softassert!(quote { is_valid }, quote { unseen_event_value <= 255 as u32 }, quote { f"Invalid event value (unseen): {unseen_event_value} does not fit in u8!" });
-
-        let seen_event_coords_idx = action.get_action_result_event_seen_coord_idx();
-        softassert!(quote { is_valid }, quote { seen_event_coords_idx < 4 }, quote { f"Invalid seen event coord idx: {seen_event_coords_idx} > 3" });
-
-        let seen_event_coords = coords[seen_event_coords_idx & 3];
-
-        let unseen_event_coords_idx = action.get_action_result_event_not_seen_coord_idx();
-        softassert!(quote { is_valid }, quote { unseen_event_coords_idx < 4 }, quote { f"Invalid unseen event coord idx: {unseen_event_coords_idx} > 3" });
-
-        let unseen_event_coords = coords[unseen_event_coords_idx & 3];
-
-        //let events = [
-        let dummy_event =    build_subtype_value_event(NO_EVENT, c.get_id(), coords[ACTION_RESULT_COORDINATES_IDX_INVISIBLE].0, coords[ACTION_RESULT_COORDINATES_IDX_INVISIBLE].1, 0 as u8, 0 as u8, 0 as u8);
-        let unseen_event =    build_subtype_value_event(
-                action.get_action_result_event_not_seen_type(),
-                c.get_id(), 
-                unseen_event_coords.0,
-                unseen_event_coords.1,
-                unseen_event_value as u8,
-                action.get_action_result_event_not_seen_subtype(),
-                action.get_action_result_event_not_seen_radius()
-            );
-        let seen_event =    build_subtype_value_event(
-                action.get_action_result_event_seen_type(),
-                c.get_id(), 
-                seen_event_coords.0,
-                seen_event_coords.1,
-                seen_event_value as u8,
-                action.get_action_result_event_seen_subtype(),
-                action.get_action_result_event_seen_radius()
-            );
-        //];
-
-        // APPLY EFFECTS ON SELF
-        let energy = std::wrapping_sub(energy, action.get_action_needed_energy());
-        let status = status as u32 * action.get_action_result_status_multiplier() as u32 + action.get_action_result_status_fixed_addition() as u32;
-        softassert!(quote { is_valid }, quote { status <= MAX_STATUS as u32 }, quote { f"Invalid result status: {status} > {MAX_STATUS}" });
-
-        let final_coords = coords[action.get_action_move_to_target() as u8];
-        // debug!(quote { println(f"final_coords:{final_coords}"); });
-        let is_hidden = ((c.is_hidden == 1) & !action.get_action_removes_status_hidden()) | action.get_action_sets_status_hidden();
-        let is_visible = !is_hidden & is_visible(enemy_advance, final_coords.0);
     // pub global ACTION_RESULT_STATUS_MULTIPLIER: u8 =     ACTION_REQUIREMENTS_FIELD_COUNT + 2 * ACTION_RESULT_EVENT_FIELD_COUNT;     // u1
     // pub global ACTION_RESULT_STATUS_FIXED_ADDITION: u8 = ACTION_REQUIREMENTS_FIELD_COUNT + 2 * ACTION_RESULT_EVENT_FIELD_COUNT + 1; // u4
     // pub global ACTION_MOVE_TO_TARGET: u8 =               ACTION_REQUIREMENTS_FIELD_COUNT + 2 * ACTION_RESULT_EVENT_FIELD_COUNT + 2; // u1
     // pub global ACTION_SETS_STATUS_HIDDEN: u8 = 5; // u1
     // pub global ACTION_REMOVES_STATUS_HIDDEN: u8 = 6; // u1
 
+        // CALCULATE EVENTS
+        comptime {
+          assert(SEEN_EVENT_IDX == 1);
+          assert(UNSEEN_EVENT_IDX == 0);
+        }
+        //let result_event_idx = is_visible as u32;
+        let mut events: BoundedVec<Event, 4> = BoundedVec::new();
+        // 19000 gates
+        // events.push(build_subtype_value_event(0, 0, 0, 0, 0, 0, 0));
+        // events.push(build_subtype_value_event(0, 0, 0, 0, 0, 0, 0));
+        // events.push(build_subtype_value_event(0, 0, 0, 0, 0, 0, 0));
+        // events.push(build_subtype_value_event(0, 0, 0, 0, 0, 0, 0));
+        build_result_event!(0 as u32, quote { events }, quote { is_valid }, quote { action_def });
+        build_result_event!(1 as u32, quote { events }, quote { is_valid }, quote { action_def });
+        build_result_event!(2 as u32, quote { events }, quote { is_valid }, quote { action_def });
+        build_result_event!(3 as u32, quote { events }, quote { is_valid }, quote { action_def });
+        assert(events.len() == 4);
+
+        // let seen_event_value = status as u32 * action.get_action_result_event_seen_value_status_multiplier() as u32 + action.get_action_result_event_seen_value_fixed_addition() as u32;
+        // softassert!(quote { is_valid }, quote { seen_event_value <= 255 as u32 }, quote { f"Invalid event value (seen): {seen_event_value} does not fit in u8!" });
+
+        // let unseen_event_value = status as u32 * action.get_action_result_event_not_seen_value_status_multiplier() as u32 + action.get_action_result_event_not_seen_value_fixed_addition() as u32;
+        // softassert!(quote { is_valid }, quote { unseen_event_value <= 255 as u32 }, quote { f"Invalid event value (unseen): {unseen_event_value} does not fit in u8!" });
+
+        // let seen_event_coords_idx = action.get_action_result_event_seen_coord_idx();
+        // softassert!(quote { is_valid }, quote { seen_event_coords_idx < 4 }, quote { f"Invalid seen event coord idx: {seen_event_coords_idx} > 3" });
+
+        // let seen_event_coords = coords[seen_event_coords_idx & 3];
+
+        // let unseen_event_coords_idx = action.get_action_result_event_not_seen_coord_idx();
+        // softassert!(quote { is_valid }, quote { unseen_event_coords_idx < 4 }, quote { f"Invalid unseen event coord idx: {unseen_event_coords_idx} > 3" });
+
+        // let unseen_event_coords = coords[unseen_event_coords_idx & 3];
+
+        // //let events = [
+        // let dummy_event =    build_subtype_value_event(NO_EVENT, c.get_id(), coords[ACTION_RESULT_COORDINATES_IDX_INVISIBLE].0, coords[ACTION_RESULT_COORDINATES_IDX_INVISIBLE].1, 0 as u8, 0 as u8, 0 as u8);
+        // let unseen_event =    build_subtype_value_event(
+        //         action.get_action_result_event_not_seen_type(),
+        //         c.get_id(), 
+        //         unseen_event_coords.0,
+        //         unseen_event_coords.1,
+        //         unseen_event_value as u8,
+        //         action.get_action_result_event_not_seen_subtype(),
+        //         action.get_action_result_event_not_seen_radius()
+        //     );
+        // let seen_event =    build_subtype_value_event(
+        //         action.get_action_result_event_seen_type(),
+        //         c.get_id(), 
+        //         seen_event_coords.0,
+        //         seen_event_coords.1,
+        //         seen_event_value as u8,
+        //         action.get_action_result_event_seen_subtype(),
+        //         action.get_action_result_event_seen_radius()
+        //     );
+        //];
+
+
+        // APPLY EFFECTS ON SELF
+        let mut result_energy = energy;
+        let mut result_coords = coords[0];
+        let mut result_progress = actor_progress;
+        let mut result_is_hidden = actor_is_hidden;
+        let mut result_is_visible = actor_is_in_view_range;
+        let mut result_damage_mod = actor_damage_mod;
+        let mut result_health = actor.get_health();
+        let mut result_status = actor_status;
+
+
+        // let energy = std::wrapping_sub(energy, action.get_action_req_energy());
+        // let status = actor_progress as u32 * action.get_action_result_status_multiplier() as u32 + action.get_action_result_status_fixed_addition() as u32;
+        // softassert!(quote { is_valid }, quote { status <= MAX_STATUS as u32 }, quote { f"Invalid result status: {status} > {MAX_STATUS}" });
+
+        // let final_coords = coords[action.get_action_move_to_target() as u8];
+        // // debug!(quote { println(f"final_coords:{final_coords}"); });
+        // let is_hidden = ((c.is_hidden == 1) & !action.get_action_result_effect_removes_status_hidden()) | action.get_action_result_effect_sets_status_hidden();
+        // let is_visible = !is_hidden & is_visible(enemy_advance, final_coords.0);
+        // 200 gates
+        apply_action_result_effects!(quote { action_def });
+
+// let result_coord_src = action_def[6] as u8;
+// let result_coord_src_fixed = result_coord_src & 4 as u8;
+// let result_coord = result_coord_src_fixed != 0 as u8;
+// let result_coord_cast = result_coord as u8;
+// println(f"result coords: {result_coord_src} {result_coord_src_fixed} {result_coord} {result_coord_cast}");
+// result_coords = coords[((action_def[6]as u8 / 4 as u8) == 1 as u8)as u8];
         // let target_coords = [
         //     (target_x, target_y),
         //     (c.get_target_x(), c.get_target_y())
@@ -951,24 +294,26 @@ pub fn execute_action<T>(
 
         (
             is_valid,
-            if is_visible { seen_event } else { unseen_event },//events[1 + (is_visible as u8)],
-            if action.get_action_unseen_event_is_internal() { unseen_event } else { dummy_event },//events[get_action_unseen_event_is_internal(action_def) as u8],
+            if result_is_visible { events.get_unchecked(SEEN_EVENT_IDX) } else { events.get_unchecked(UNSEEN_EVENT_IDX) },//events[1 + (is_visible as u8)],
+            events.get_unchecked(WORLD_EVENT_IDX),
+            events.get_unchecked(SELF_EVENT_IDX),//events[get_action_unseen_event_is_internal(action_def) as u8],
             Character {
-                id: c.id,
-                x: final_coords.0,
-                y: final_coords.1,
-                status: status as u8,
-                is_hidden: is_hidden as u1,
-                has_been_seen: is_visible,
-                last_action: is_not_interrupted as u8 * c.last_action + (!is_not_interrupted) as u8 * action.get_action_type(),
-                target_x: is_not_interrupted as u8 * c.get_target_x() + (!is_not_interrupted) as u8 * action_target_x, // if is_not_interrupted { c.get_target_x() } else { get_action_target_x(action) };
-                target_y: is_not_interrupted as u8 * c.get_target_y() + (!is_not_interrupted) as u8 * action_target_y,
-                class: c.class,
-                damage_mod: c.damage_mod,
-                health: c.health,
-                actions: c.actions
+                id: actor_id,
+                x: result_coords.0,
+                y: result_coords.1,
+                progress: result_progress, // status as u8,
+                is_hidden: result_is_hidden as u1, //is_hidden as u1,
+                has_been_seen: result_is_visible, //is_visible,
+                last_action: is_not_interrupted as u8 * actor.get_last_action() + (!is_not_interrupted) as u8 * action_type,
+                target_x: is_not_interrupted as u8 * actor.get_target_x() + (!is_not_interrupted) as u8 * action_target_x, // if is_not_interrupted { c.get_target_x() } else { get_action_target_x(action) };
+                target_y: is_not_interrupted as u8 * actor.get_target_y() + (!is_not_interrupted) as u8 * action_target_y,
+                class: actor.class,
+                damage_mod: result_damage_mod,
+                health: result_health,
+                status: result_status,
+                actions: actor.actions,
             },
-            energy
+            result_energy
         )
 
         // if get_action_type(action) == SNEAK {
@@ -1236,8 +581,14 @@ pub fn execute_action<T>(
 
 #[test]
 fn test_execute_action() {
-    let action = build_test_action_def!(build_move_action(4), quote { 1, 2, 3, 4 }); //new_action(1, 2, 3, 4);
-    let their_advance = 1;
+  // global action_serde: ActionSerDe = ActionSerDe::new(MAX_ACTIONS, MAX_ACTIONS_PER_CHARACTER as u8, WIDTH, HEIGHT, WAIT);
+// let action_builder = get_arena_action_def_builder();
+    let action_def = arena_action_def_builder.build_move_action(4); //, quote { 1, 2, 3, 4 }; //new_action(1, 2, 3, 4);
+    // let wait_action = arena_action_def_builder.build_wait_action_def();
+    let action = new_action(1, 2, 3, 4);
+    let their_advance = 30;
+    let mut actions = [[0; 32]; MAX_ACTIONS_PER_CHARACTER + 1];
+    actions[1] = action_def;
     let actor = Character {
         id: 2,
         x: 2,
@@ -1250,13 +601,14 @@ fn test_execute_action() {
         class: MAGE,
         is_hidden: 0 as u1,
         has_been_seen: true,
+        progress: 0,
         status: 0,
-        actions: [[0 as u8; 29]; MAX_ACTIONS_PER_CHARACTER]
+        actions: actions
     };
     let energy = 15;
     let my_obstacles = get_default_obstacles(0);
     let their_obstacles = get_default_obstacles(1);
-    let (valid, event, internal_event, c, result_energy) = execute_action(
+    let (valid, event, _, internal_event, c, result_energy) = execute_action(
         action,
         their_advance,
         actor,
@@ -1267,9 +619,9 @@ fn test_execute_action() {
     assert(valid, "valid");
     assert(event.actor_id == actor.id, f"{event}.actorid is not {actor}.id");
     assert(event.event == SEE_MOVE, f"{event} is not {SEE_MOVE}");
-    assert(event.x == action.get_action_target_x(), f"{event}.target_x is not action target x");
-    assert(event.y == action.get_action_target_y(), f"{event}.target_y is not action target y");
-    assert(c.x == event.x, f"{c}.x is not action target x");
+    assert(event.x == get_action_target_x(action), f"{event}.target_x is not action target x");
+    assert(event.y == get_action_target_y(action), f"{event}.target_y is not action target y");
+    assert(c.x == event.x, f"{c}.x is not event {event}.x");
     assert(internal_event.event == NO_EVENT, f"expected no internal event, got {internal_event}");
     assert(result_energy == 11, f"{result_energy} != 11");
 }

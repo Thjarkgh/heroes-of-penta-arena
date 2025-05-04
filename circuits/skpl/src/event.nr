@@ -1,18 +1,17 @@
-use crate::{ NO_EVENT, SEE_MOVE, RECEIVE_ATTACK, TRIGGERED_TRAP }; //, SEE_RITUAL, SEE_CAST, SEE_DRAW, SEE_SEARCH_TRAP, FOUND_TRAP
+use arenalib::{ NO_EVENT, SEE_MOVE, RECEIVE_ATTACK, TRIGGERED_TRAP }; //, SEE_RITUAL, SEE_CAST, SEE_DRAW, SEE_SEARCH_TRAP, FOUND_TRAP
 // use crate::{ EMPTY, WALL };
-use crate::{ EVENT_COUNT };
-use crate::{ ATTACK_FIREBALL };
-use crate::{ SERIALIZED_EVENT_BYTE_SIZE, SERIALIZED_EVENTS_ARRAY_SIZE, SERIALIZED_EVENTS_PER_FIELD };
-use crate::{ WIDTH, NOWHERE };
-use crate::{ MAX_CHARACTERS, MAX_EVENTS }; //, MAX_TRAPS
+use arenalib::{ EVENT_COUNT };
+use arenalib::{ ATTACK_FIREBALL };
+use arenalib::{ SERIALIZED_EVENT_BYTE_SIZE, SERIALIZED_EVENTS_ARRAY_SIZE, SERIALIZED_EVENTS_PER_FIELD };
+use arenalib::{ WIDTH };
+use arenalib::{ MAX_CHARACTERS, MAX_EVENTS }; //, MAX_TRAPS
+use arenalib::SerializedArenaEvents;
 // use crate::TRAPS_BUFFER_MASK;
-use crate::UNREADABLE_BYTES_PER_FIELD;
 use crate::map::get_distance;
 // use crate::character::Character;
 use crate::character::{ get_attack_damage_to_tile, get_trap_damage_to_tile };
 use crate::map::their_x_to_mine;
-use crate::{ debug };
-use super::softassert;
+use skplg::{ debug, softassert, NOWHERE, UNREADABLE_BYTES_PER_FIELD };
 
 pub struct Event {
     pub event: u8,
@@ -24,8 +23,9 @@ pub struct Event {
     pub radius: u8,
 }
 
-impl Event {
-    pub fn parse_their_events(fields: [Field; SERIALIZED_EVENTS_ARRAY_SIZE]) -> (bool, [Event; MAX_EVENTS]) {
+
+    #[export]
+    pub fn parse_their_events(fields: SerializedArenaEvents) -> pub (bool, [Event; MAX_EVENTS]) {
         comptime {
             assert(UNREADABLE_BYTES_PER_FIELD + SERIALIZED_EVENTS_PER_FIELD * SERIALIZED_EVENT_BYTE_SIZE <= 32);
             assert(SERIALIZED_EVENTS_ARRAY_SIZE * SERIALIZED_EVENTS_PER_FIELD == MAX_EVENTS);
@@ -56,7 +56,8 @@ impl Event {
         (valid, events)
     }
     
-    pub fn serialize_events(events: [Event]) -> [Field] {
+    #[export]
+    pub fn serialize_events(events: [Event; MAX_EVENTS]) -> pub SerializedArenaEvents {
         assert(events.len() == MAX_EVENTS);
         assert(MAX_EVENTS % SERIALIZED_EVENTS_PER_FIELD == 0);
         assert(SERIALIZED_EVENT_BYTE_SIZE >= 6);
@@ -78,14 +79,55 @@ impl Event {
             }
             fields = fields.push_back(std::field::bytes32_to_field(data));
         }
-        fields
+        fields.as_array()
     }
     
+#[test]
+fn test_event_serde() {
+    let events = [
+    build_subtype_value_event(NO_EVENT, 4, NOWHERE, NOWHERE, 5, NO_EVENT, 1),
+    build_subtype_value_event(NO_EVENT, 4, NOWHERE, NOWHERE, 6, NO_EVENT, 2),
+    build_subtype_value_event(NO_EVENT, 4, NOWHERE, NOWHERE, 7, NO_EVENT, 3),
+    build_subtype_value_event(NO_EVENT, 4, NOWHERE, NOWHERE, 8, NO_EVENT, 4)
+  ];
+
+  let serialized = serialize_events(events);
+  let (result_valid, result) = parse_their_events(serialized);
+  assert(result_valid);
+  assert(result[0].event == events[0].event);
+  assert(result[1].event == events[1].event);
+  assert(result[2].event == events[2].event);
+  assert(result[3].event == events[3].event);
+  assert(result[0].actor_id == events[0].actor_id);
+  assert(result[1].actor_id == events[1].actor_id);
+  assert(result[2].actor_id == events[2].actor_id);
+  assert(result[3].actor_id == events[3].actor_id);
+  assert(result[0].x == events[0].x);
+  assert(result[1].x == events[1].x);
+  assert(result[2].x == events[2].x);
+  assert(result[3].x == events[3].x);
+  assert(result[0].y == events[0].y);
+  assert(result[1].y == events[1].y);
+  assert(result[2].y == events[2].y);
+  assert(result[3].y == events[3].y);
+  assert(result[0].value == events[0].value);
+  assert(result[1].value == events[1].value);
+  assert(result[2].value == events[2].value);
+  assert(result[3].value == events[3].value);
+  assert(result[0].subtype == events[0].subtype);
+  assert(result[1].subtype == events[1].subtype);
+  assert(result[2].subtype == events[2].subtype);
+  assert(result[3].subtype == events[3].subtype);
+  assert(result[0].radius == events[0].radius);
+  assert(result[1].radius == events[1].radius);
+  assert(result[2].radius == events[2].radius);
+  assert(result[3].radius == events[3].radius);
+}
     // fn affects_my_character(self, x: u8, y: u8) -> bool {
     //     let distance = get_distance(self.x, self.y, x, y);
     //     ((self.x == x) & (self.y == y)) | ((self.event == RECEIVE_ATTACK) & (self.subtype == ATTACK_FIREBALL) & is_neighbor(self.x, self.y, x, y))
     // }
-
+impl Event {
     fn affects_my_obstacle(self, x: u8, y: u8) -> bool {
         (self.x == x) & (self.y == y)
     }
@@ -195,14 +237,14 @@ pub fn build_value_event(event: u8, actor_id: u8, x: u8, y: u8, value: u8) -> Ev
     }
 }
 
-pub fn build_subtype_value_event(event: u8, actor_id: u8, x: u8, y: u8, value: u8, subtype: u8, radius: u8) -> Event {
+pub fn build_subtype_value_event(event_type: u8, actor_id: u8, x: u8, y: u8, value: u8, event_subtype: u8, radius: u8) -> Event {
     Event {
-        event: event,
+        event: event_type,
         actor_id: actor_id,
         x: x,
         y: y,
         value: value,
-        subtype: subtype,
+        subtype: event_subtype,
         radius: radius,
     }
 }
