@@ -205,6 +205,153 @@ export function parseWitness<T>(abi: Circuit["abi"], witness: string[]) {
   return parseWitnessElement(abi.return_type.abi_type) as T;
 }
 
+// {"abi_type":{"kind":"boolean"},"visibility":"private"}
+// TODO: Implement structure verification with some JSON verifier for T
+export function serializeArguments(args: any, abi: Circuit["abi"]): {[key: string]: any} {
+  if (!abi.parameters || abi.parameters.length == 0) {
+    return {};
+  }
+
+  const sign = (x: number, threshold: number) => {
+    if (x < 0) {
+      return x + 2 * threshold;
+    }
+    return x;
+  }
+
+  const toHex = (x: number | null | undefined): string => {
+    if (x == undefined) {
+      return "0x00";
+    }
+    const h = x.toString(16);
+    if (h.length % 2 === 0) {
+      return `0x${h}`;
+    } else {
+      return `0x0${h}`;
+    }
+  };
+
+  const serializeElement = (type: ParameterType, data: any): any => {
+    if (type.kind === 'integer') {
+      if (typeof data === 'string') return data;
+      if (type.sign === 'signed') {
+        switch (type.width) {
+          case 8: {
+            return toHex(sign(data, 0x80));
+          }
+          case 16: {
+            return toHex(sign(data, 0x8000));
+          }
+          case 32: {
+            return toHex(sign(data, 0x80000000));
+          }
+          case 64: {
+            if (data < 0x00n) {
+              return toHex(data + 0x10000000000000000n);
+            }
+            return toHex(data);
+          }
+          default: throw new Error(`Unsupported signed integer width: ${type.width}`);
+        }
+      } else if (type.sign === 'unsigned') {
+        switch (type.width) {
+          case 1: return data == 1 ? "0x01" : "0x00";
+          case 8: return toHex(data);
+          case 16: return toHex(data);
+          case 32: return toHex(data);
+          case 64: return toHex(data);
+          default: throw new Error(`Unsupported unsigned integer width: ${type.width}`);
+        }
+      } else {
+        throw new Error(`Unsupported integer signedness: ${type.sign}`);
+      }
+    } else if (type.kind === 'field') {
+      if (typeof data === 'string') {
+        return data;
+      } else {
+        return toHex(data);
+      }
+    } else if (type.kind === 'array') {
+      const array = [];
+      if (!type.length) {
+        throw new Error('Array length is undefined');
+      }
+      if (!type.type) {
+        throw new Error('Array type is undefined');
+      }
+      for (let i = 0; i < type.length; i++) {
+        const x = serializeElement(type.type, data[i]);
+        if (typeof x === 'string') {
+          array.push(x);
+        } else {
+          for (const y of x) {
+            if (typeof y !== 'string') {
+              throw new Error("must return string or string[]");
+            }
+            array.push(y);
+          }
+        }
+      }
+      return array;
+    } else if (type.kind === 'tuple') {
+      const tuple = [];
+      if (!type.fields) {
+        throw new Error('Tuple fields are undefined');
+      }
+      for (let i = 0; i < type.fields.length; i++) {
+        tuple[i] = serializeElement(type.fields[i].type, data[i]);
+      }
+      return tuple;
+    } else if (type.kind === 'boolean') {
+      if (typeof data === 'string') {
+        if (data === "0x01") return data;
+        if (data.toLowerCase() === "true") return "0x01";
+        return "0x00";
+      }
+      if (data) return "0x01";
+      else return "0x00";
+    } else if (type.kind === 'struct') {
+      if (!type.fields) {
+        throw new Error('Struct fields are undefined');
+      }
+      // {
+      //  "kind":"struct",
+      //  "path":"character::Character",
+      //  "fields":[
+      //    {"name":"id","type":{"kind":"integer","sign":"unsigned","width":8}},
+      //    {"name":"x","type":{"kind":"integer","sign":"unsigned","width":8}},
+      //    {"name":"y","type":{"kind":"integer","sign":"unsigned","width":8}},
+      //    {"name":"class","type":{"kind":"integer","sign":"unsigned","width":8}},{"name":"progress","type":{"kind":"integer","sign":"unsigned","width":8}},{"name":"health","type":{"kind":"integer","sign":"unsigned","width":8}},{"name":"has_been_seen","type":{"kind":"boolean"}},{"name":"is_hidden","type":{"kind":"integer","sign":"unsigned","width":1}},{"name":"target_x","type":{"kind":"integer","sign":"unsigned","width":8}},{"name":"target_y","type":{"kind":"integer","sign":"unsigned","width":8}},{"name":"damage_mod","type":{"kind":"integer","sign":"unsigned","width":8}},{"name":"last_action","type":{"kind":"integer","sign":"unsigned","width":8}},{"name":"status","type":{"kind":"integer","sign":"unsigned","width":8}},{"name":"actions","type":{"kind":"array","length":7,"type":{"kind":"array","length":32,"type":{"kind":"integer","sign":"unsigned","width":8}}}}]}}]}
+      const struct: string[] = [];
+      for (let i = 0; i < type.fields.length; i++) {
+        const field = type.fields[i];
+        const serialized = serializeElement(field.type!, data[(field as any).name]);
+        if (typeof serialized === 'string') {
+          struct.push(serialized);
+        } else {
+          for (const s of serialized) {
+            if (typeof s !== 'string') throw new Error("if serialize element returns array, it must be string array");
+            struct.push(s);
+          }
+        }
+      }
+      return struct;
+    } else {
+      throw new Error(`Not Implemented return type ${type.kind}`);
+    }
+  }
+
+  const result: {[key: string]: any} = {};
+  let i = 0;
+  while (i < abi.parameters.length) {
+    const paramDef = abi.parameters[i];
+    const d = args[paramDef.name];
+    result[paramDef.name] = serializeElement(paramDef.type, d);
+    i++;
+  }
+  return result;
+}
+
 function getLastIndexOfPublicInputs(circuit: Circuit) {
   // Each field is encoded as a hexadecimal string of 64 characters (i.e. 32 bytes)
   return 64 * 3 + 8 + computePublicInputsSize(circuit.abi.parameters) * 64;
@@ -254,8 +401,9 @@ export async function executeCircuit<T>(
   circuitId: string,
   returnType: Circuit["abi"]
 ) {
+  const serializedInputs = serializeArguments(inputs, returnType);
   const {witness} = await NoirModule.execute(
-    inputs,
+    serializedInputs,
     circuitId,
   );
 
@@ -278,11 +426,13 @@ export async function executeCircuit<T>(
 export async function generateProof(
   inputs: {[key: string]: any},
   circuitId: string,
+  abi: Circuit["abi"]
   //proofType: 'honk' = 'honk',
   //recursive: boolean = false,
 ) {
+  const serializedInputs = serializeArguments(inputs, abi);
   const proof = await NoirModule.prove(
-    inputs,
+    serializedInputs,
     circuitId,
     //proofType,
     //recursive,
