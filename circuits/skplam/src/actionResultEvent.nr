@@ -98,7 +98,7 @@ pub comptime fn build_result_event(event_idx: u32, events_collection_varname: Qu
   });
 
   //let value_valid_msg = f"Invalid event value ({event_idx}): result_event_value does not fit in u8!";
-  let value_valid = softassert(valid_varname, quote { result_event_value <= 255 as u32 }, quote { f"Invalid event value ({event_idx}): result_event_value does not fit in u8!" });
+  // let value_valid = softassert(valid_varname, quote { result_event_value <= 255 as u32 }, quote { f"Invalid event value ({event_idx}): result_event_value does not fit in u8!" });
   let full_result = quote {
     let event_idx = $event_idx as u8;
     let mut result_event_type: u8 = 0;
@@ -107,7 +107,10 @@ pub comptime fn build_result_event(event_idx: u32, events_collection_varname: Qu
     let mut result_event_value: u32 = 0;
     let mut result_event_radius: u8 = 0;
     $result
-    $value_valid
+    // $value_valid
+    if (result_event_value > 255) {
+      result_event_value = 255;
+    }
 
     $events_collection_varname.push(build_subtype_value_event(
       result_event_type,
