@@ -205,13 +205,21 @@ pub fn get_obstacle_type(obstacle: Obstacle) -> u8 {
 
 #[export]
 pub fn new_obstacle(id: u8, x: u8, y: u8, health: u8, obstacle_type: u8) -> pub (bool, Obstacle) {
-    let mut valid = true;
-    softassert!(quote { valid }, quote { (x < WIDTH) | (x == NOWHERE) }, quote { f"Cannot create Obstacle: Invalid x: {x} >= {WIDTH}" });
-    softassert!(quote { valid }, quote { (y < HEIGHT) | (y == NOWHERE) }, quote { f"Cannot create Obstacle: Invalid y: {y} >= {HEIGHT}" });
-    softassert!(quote { valid }, quote { health <= MAX_HEALTH }, quote { f"Cannot create Obstacle: Invalid health: {health} > {MAX_HEALTH}" });
-    softassert!(quote { valid }, quote { obstacle_type <= MAX_OBSTACLE_TYPE }, quote { f"Cannot create Obstacle: Invalid obstacle type: {obstacle_type} > {MAX_OBSTACLE_TYPE}" }); //TODO: not sure if this or is_valid???
+  let valid = ((x < WIDTH) | (x == NOWHERE)) & ((y < HEIGHT) | (y == NOWHERE)) & (health <= MAX_HEALTH) & (obstacle_type <= MAX_OBSTACLE_TYPE);
+    // let mut valid = true;
+    // softassert!(quote { valid }, quote { (x < WIDTH) | (x == NOWHERE) }, quote { f"Cannot create Obstacle: Invalid x: {x} >= {WIDTH}" });
+    // softassert!(quote { valid }, quote { (y < HEIGHT) | (y == NOWHERE) }, quote { f"Cannot create Obstacle: Invalid y: {y} >= {HEIGHT}" });
+    // softassert!(quote { valid }, quote { health <= MAX_HEALTH }, quote { f"Cannot create Obstacle: Invalid health: {health} > {MAX_HEALTH}" });
+    // softassert!(quote { valid }, quote { obstacle_type <= MAX_OBSTACLE_TYPE }, quote { f"Cannot create Obstacle: Invalid obstacle type: {obstacle_type} > {MAX_OBSTACLE_TYPE}" }); //TODO: not sure if this or is_valid???
     // (valid, [ id, x, y, health, obstacle_type ])
     (valid, Obstacle { id: id, x: x, y: y, health: health, obstacle_type: obstacle_type })
+}
+
+#[test]
+fn test_new_obstacle() {
+  let (val, o) = new_obstacle(0, 0, 2, 0xc8, 0x06);
+  assert(val);
+  assert(o.id == 0);
 }
 
 // #[export]
