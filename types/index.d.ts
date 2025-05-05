@@ -1,4 +1,4 @@
-export type ParameterKind = 'string' | 'array' | 'struct' | 'field' | 'integer';
+export type ParameterKind = 'string' | 'array' | 'struct' | 'field' | 'integer' | 'tuple' | 'boolean';
 
 export type ParameterType = {
   kind: ParameterKind;
