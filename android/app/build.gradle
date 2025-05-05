@@ -73,7 +73,9 @@ android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
-
+  dexOptions {
+    javaMaxHeapSize "4g"
+  }
     namespace "com.heroesofpentaarena"
     defaultConfig {
         applicationId "com.heroesofpentaarena"
