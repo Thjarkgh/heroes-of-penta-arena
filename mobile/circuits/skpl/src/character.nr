@@ -505,14 +505,14 @@ impl Character {
         }
 
       let (is_valid, c) = parse_unconstrained(id, data, actions_data, wait_action, events, enemy_advance);
-      assert(c.)
+      // assert(c.)
 
         assert(c.is_valid());
         (is_valid, c)
     }
 }
 
-unconstrained fn parse_unconstrained(id: u8, data: Field, actions_data: SerializedArenaActionDefinitions, wait_action: ActionDefinition, events: [Event; MAX_EVENTS], enemy_advance: u8) -> (bool,Character) {
+fn parse_unconstrained(id: u8, data: Field, actions_data: SerializedArenaActionDefinitions, wait_action: ActionDefinition, events: [Event; MAX_EVENTS], enemy_advance: u8) -> (bool,Character) {
           let mut is_valid = true;
 
         let split: [u8; 32] = data.to_be_bytes::<32>();
@@ -592,6 +592,7 @@ unconstrained fn parse_unconstrained(id: u8, data: Field, actions_data: Serializ
             ],
             status: 0 // TODO: status
         };
+        (is_valid, c)
 }
 
 // unconstrained fn create_character_unconstrained(
