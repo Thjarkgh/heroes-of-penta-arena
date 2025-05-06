@@ -12,10 +12,10 @@
     "ios-device": "npx react-native run-ios --udid $DEVICE_ID",
     "ios-device-release": "npx react-native run-ios --configuration Release --udid $DEVICE_ID",
     "ios-list-devices": "xcrun xctrace list devices",
-    "export": "cd ./circuits/skplg && nargo export && cd ../skplam && nargo export && cd ../skpla && nargo export && cd ../arenalib && nargo export && cd ../skpl && nargo export && cd ../circuit && nargo export && cd ../..",
-    "generate": "npm run export && noir-codegen ./circuits/skpl/export/*.json --out-dir ./logic/skpl && noir-codegen ./circuits/arenalib/export/*.json --out-dir ./logic/arenalib && noir-codegen ./circuits/skpla/export/*.json --out-dir ./logic/skpla && noir-codegen ./circuits/skplam/export/*.json --out-dir ./logic/skplam",
-    "noir-profiler": "cd ./circuits && cd skpl && nargo export && noir-profiler gates --artifact-path ./export/turn.json --backend-path bb --output ./target -- --include_gates_per_opcode",
-    "bb": "cd ./circuits/circuit && nargo compile && nargo e && bb prove -b ./target/skp.json -w ./target/skp.gz -o ./target --verify --scheme ultra_honk && bb write_vk -b ./target/skp.json -o ./target --scheme ultra_honk &&  bb verify -k ./target/vk -p ./target/proof --verbose --scheme ultra_honk"
+    "export": "cd ../circuits/skplg && nargo export && cd ../skplam && nargo export && cd ../skpla && nargo export && cd ../arenalib && nargo export && cd ../skpl && nargo export && cd ../circuit && nargo export && cd ../.. && cp ./circuits/skpl/export/* ./mobile/circuits && cp ./circuits/skpla/export/* ./mobile/circuits && cp ./circuits/skplam/export/* ./mobile/circuits && cp ./circuits/arenalib/export/* ./mobile/circuits && cp ./circuits/circuit/target/skp.json ./mobile/circuits && cd mobile",
+    "generate": "npm run export && noir-codegen ../circuits/skpl/export/*.json --out-dir ./logic/skpl && noir-codegen ../circuits/arenalib/export/*.json --out-dir ./logic/arenalib && noir-codegen ../circuits/skpla/export/*.json --out-dir ./logic/skpla && noir-codegen ../circuits/skplam/export/*.json --out-dir ./logic/skplam",
+    "noir-profiler": "cd ../circuits && cd skpl && nargo export && noir-profiler gates --artifact-path ./export/turn.json --backend-path bb --output ./target -- --include_gates_per_opcode",
+    "bb": "cd ../circuits/circuit && nargo compile && nargo e && bb prove -b ./target/skp.json -w ./target/skp.gz -o ./target --verify --scheme ultra_honk && bb write_vk -b ./target/skp.json -o ./target --scheme ultra_honk &&  bb verify -k ./target/vk -p ./target/proof --verbose --scheme ultra_honk"
 
   },
   "dependencies": {

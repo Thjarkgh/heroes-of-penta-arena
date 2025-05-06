@@ -3,3 +3,19 @@ node_modules
 scripts/srs_downloader/target/
 
 scripts.zip
+
+circuits/circuit/contract/skp/artifacts/build-info/
+
+circuits/circuit/target/witness-name.gz
+
+circuits/circuit/target/vk_old
+
+circuits/circuit/proofs/
+
+circuits/circuit/target/witness.gz
+
+circuits/skpl/contract/skp/artifacts/build-info/
+
+circuits/skpl/proofs/
+
+circuits/skpl/target/witness-name.gz
