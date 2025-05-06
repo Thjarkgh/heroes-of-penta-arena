@@ -1,0 +1,480 @@
+body {
+  font-family: sans-serif;
+  margin: 0;
+  background-color: #f4f7f6;
+  color: #333;
+}
+
+#root {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.layout {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+header {
+  background-color: #2c3e50;
+  color: white;
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+nav ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  gap: 1.5rem;
+}
+
+nav a {
+  color: #ecf0f1;
+  text-decoration: none;
+  font-weight: bold;
+  transition: color 0.2s;
+}
+
+nav a:hover, nav a.active {
+  color: #3498db;
+}
+
+.logout-button {
+    background-color: #e74c3c;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+     margin-left: 2rem;
+}
+.logout-button:hover {
+    background-color: #c0392b;
+}
+
+
+main {
+  padding: 2rem;
+  flex-grow: 1;
+}
+
+footer {
+    background-color: #bdc3c7;
+    color: #2c3e50;
+    text-align: center;
+    padding: 0.5rem;
+    margin-top: auto; /* Pushes footer down */
+}
+
+
+/* Page specific */
+.page-container {
+    max-width: 95%;
+    margin: 0 auto;
+}
+
+.login-page {
+  max-width: 400px;
+  margin: 4rem auto;
+  padding: 2rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background-color: #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.login-page h2 {
+    text-align: center;
+    margin-bottom: 1.5rem;
+    color: #2c3e50;
+}
+.login-page div {
+    margin-bottom: 1rem;
+}
+.login-page label {
+    display: block;
+    margin-bottom: 0.3rem;
+    font-weight: bold;
+}
+.login-page input {
+    width: 100%;
+    padding: 0.6rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+.login-page button {
+    width: 100%;
+    padding: 0.8rem;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    margin-top: 0.5rem;
+}
+.login-page button:disabled {
+    background-color: #a9cce3;
+    cursor: not-allowed;
+}
+
+
+.search-form, .history-input-form {
+  background-color: #fff;
+  padding: 1.5rem;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.form-row {
+    display: flex;
+    flex-direction: column;
+     flex-basis: 200px; /* Adjust basis */
+     flex-grow: 1;
+}
+
+.search-form label, .history-input-form label {
+    margin-bottom: 0.3rem;
+    font-size: 0.9rem;
+    color: #555;
+}
+ .search-form input, .history-input-form input {
+    padding: 0.6rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+ }
+ .search-form button, .history-input-form button {
+     padding: 0.6rem 1.5rem;
+     background-color: #2ecc71;
+     color: white;
+     border: none;
+     border-radius: 4px;
+     cursor: pointer;
+     height: fit-content; /* Align button nicely */
+ }
+  .search-form button:disabled, .history-input-form button:disabled {
+     background-color: #95a5a6;
+ }
+
+.results-container {
+  margin-top: 2rem;
+}
+.results-container h3 {
+    margin-bottom: 1rem;
+    color: #2c3e50;
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.results-table th, .results-table td {
+  border: 1px solid #ddd;
+  padding: 0.8rem;
+  text-align: left;
+  vertical-align: top; /* Align content top for expandable cells */
+}
+
+.results-table th {
+  background-color: #ecf0f1;
+  color: #2c3e50;
+  font-weight: bold;
+}
+
+.results-table tbody tr:nth-child(even) {
+  background-color: #f9f9f9;
+}
+.results-table tbody tr:hover {
+    background-color: #e8f6fd;
+}
+
+/* Expandable Cell Styles */
+.expandable-cell {
+    position: relative;
+    /* padding-left: 25px; Space for button  */
+    display: flex;
+    align-items: flex-start;
+    gap: 5px;
+}
+.expand-button {
+    /* position: absolute;
+    left: 0;
+    top: 5px; */
+    background: none;
+    border: 1px solid #ccc;
+    cursor: pointer;
+    padding: 1px 4px;
+    font-size: 0.8em;
+    line-height: 1;
+    border-radius: 3px;
+    color: #3498db;
+    min-width: 20px; /* Ensure button has width */
+}
+.expand-button:hover {
+    background-color: #eee;
+}
+.expanded-list {
+    list-style: disc;
+    padding-left: 20px;
+    margin: 0;
+}
+.expanded-object {
+    background-color: #eee;
+    padding: 5px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 0.9em;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 300px;
+    overflow-y: auto;
+    margin: 0; /* Reset pre margin */
+}
+ .data-null { color: #95a5a6; font-style: italic;}
+ .data-empty-array, .data-empty-object { color: #95a5a6; }
+
+
+.error-message {
+  color: #e74c3c;
+  background-color: #fdd;
+  padding: 0.8rem;
+  border: 1px solid #e74c3c;
+  border-radius: 4px;
+  margin-top: 1rem;
+}
+
+/* Link styling within tables */
+.results-table a {
+    color: #2980b9;
+    text-decoration: none;
+}
+ .results-table a:hover {
+     text-decoration: underline;
+ }
+ /* Sub-table styling inside ExpandableCell */
+ .sub-table {
+     border-collapse: collapse;
+     width: 100%; /* Take full width of the parent cell */
+     margin-top: 5px;
+     background-color: #f8f9f9; /* Slightly different background */
+     font-size: 0.9em;
+     box-shadow: inset 0 0 3px rgba(0,0,0,0.1);
+ }
+ 
+ .sub-table td {
+     border: 1px solid #e0e0e0;
+     padding: 4px 6px;
+     vertical-align: top;
+ }
+ 
+ .sub-table-key {
+     font-weight: bold;
+     color: #555;
+     width: 120px; /* Adjust key column width */
+     white-space: nowrap;
+ }
+ 
+ .sub-table-value {
+     word-break: break-word; /* Allow long values to wrap */
+ }
+ .sub-table-value .nested-json-preview {
+     max-height: 150px; /* Limit height of nested JSON */
+     overflow: auto;
+     font-size: 0.9em;
+     margin: 0;
+ }
+ 
+ 
+ /* Filter controls */
+ .filter-controls {
+     margin-bottom: 1rem;
+     padding: 0.8rem;
+     background-color: #f1f1f1;
+     border-radius: 4px;
+     display: flex;
+     align-items: center;
+     gap: 0.5rem;
+ }
+ .filter-controls label {
+     font-weight: bold;
+     color: #333;
+ }
+ .filter-controls select {
+     padding: 0.4rem 0.6rem;
+     border: 1px solid #ccc;
+     border-radius: 4px;
+ }
+ 
+ /* Table Wrapper for potential scroll */
+ .table-wrapper {
+     width: 100%;
+     overflow-x: auto; /* Enable horizontal scroll if table is too wide */
+ }
+ 
+ /* Adjust history table header/cell padding for better fit */
+ .history-table th, .history-table td {
+     padding: 0.5rem; /* Slightly smaller padding */
+      white-space: nowrap; /* Prevent headers from wrapping initially */
+ }
+ /* Allow specific columns to wrap if needed */
+ .history-table td .expandable-cell {
+      white-space: normal; /* Allow expandable cell content to wrap */
+ }
+ .history-table td:nth-child(2) { white-space: normal; } /* Allow date to wrap */
+ 
+ 
+ /* Data type indicators (optional) */
+ .data-null { color: #95a5a6; font-style: italic;}
+ .data-empty-array, .data-empty-object { color: #95a5a6; }
+ .data-boolean-true { color: #27ae60; font-weight: bold;}
+ .data-boolean-false { color: #c0392b; font-weight: bold;}
+
+
+/* Expandable Cell Structure Change */
+.expandable-cell-container {
+  display: flex;
+  align-items: flex-start; /* Align button top */
+  gap: 5px;
+}
+.expandable-content {
+  flex-grow: 1; /* Allow content area to take space */
+  min-width: 0; /* Important for flex children to shrink */
+}
+
+
+/* Sub-table horizontal wrapper and table */
+.sub-table-wrapper {
+  width: 100%; /* Use available width */
+  overflow-x: auto; /* Enable horizontal scroll */
+  border: 1px solid #e0e0e0;
+  margin-top: 4px;
+  max-width: 800px; /* Optional: Set a max-width */
+}
+
+.sub-table.horizontal {
+  border-collapse: collapse;
+  background-color: #f8f9f9;
+  font-size: 0.9em;
+  white-space: nowrap; /* Prevent wrapping in sub-table cells */
+  width: max-content; /* Make table as wide as its content */
+}
+
+.sub-table.horizontal th,
+.sub-table.horizontal td {
+  border: 1px solid #d0d0d0;
+  padding: 4px 8px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.sub-table.horizontal th { /* Header styling */
+  background-color: #e9ecef;
+  font-weight: bold;
+  position: sticky; /* Optional: Sticky header if needed */
+  top: 0;
+  z-index: 1;
+}
+.sub-table.horizontal .sub-table-value .nested-json-preview {
+  white-space: pre-wrap; /* Allow nested JSON to wrap */
+  max-width: 300px; /* Prevent overly wide nested JSON */
+  overflow-x: auto;
+}
+
+/* Controls Row for Filters and Toggles */
+.controls-row {
+  display: flex;
+  justify-content: space-between; /* Space out controls */
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  flex-wrap: wrap; /* Allow wrapping on small screens */
+  gap: 1rem;
+}
+
+/* Column Toggle Styles */
+.column-toggle-container {
+  position: relative; /* Needed for menu positioning */
+}
+
+.column-toggle-button {
+  padding: 0.5rem 1rem;
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.column-toggle-button:hover {
+  background-color: #5a6268;
+}
+
+.column-toggle-menu {
+  position: absolute;
+  top: 100%; /* Position below the button */
+  right: 0; /* Align to the right */
+  background-color: white;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  border-radius: 4px;
+  padding: 1rem;
+  z-index: 100;
+  min-width: 200px; /* Ensure menu has some width */
+  max-height: 400px; /* Limit height and allow scroll */
+  overflow-y: auto;
+}
+.column-toggle-menu h4 {
+  margin-top: 0;
+  margin-bottom: 0.8rem;
+  font-size: 1rem;
+  color: #333;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 0.5rem;
+}
+
+.column-toggle-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.column-toggle-item input[type="checkbox"] {
+  margin-right: 0.5rem;
+  cursor: pointer;
+}
+.column-toggle-item label {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+
+/* Ensure main table wrapper allows scroll */
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* Give main table cells some min-width if needed */
+.history-table th, .history-table td {
+ min-width: 100px; /* Adjust as needed  */
+}
