@@ -34,7 +34,7 @@ export default function Home() {
         style={{
           gap: 20,
         }}>
-        <Button
+        {/* <Button
           onPress={() => {
             navigation.navigate('ProductProof');
           }}>
@@ -69,7 +69,7 @@ export default function Home() {
             }}>
             Proof of secp256r1
           </Text>
-        </Button>
+        </Button> */}
         <Button
           onPress={() => {
             navigation.navigate('skp');

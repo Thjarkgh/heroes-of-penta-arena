@@ -4,9 +4,9 @@ import React from 'react';
 import {TamaguiProvider} from 'tamagui';
 import Home from './pages/home';
 import {NavigationContainer} from '@react-navigation/native';
-import ProductProof from './pages/product-proof';
-import PedersenProof from './pages/pedersen-proof';
-import Secp256r1Proof from './pages/secp256r1-proof';
+// import ProductProof from './pages/product-proof';
+// import PedersenProof from './pages/pedersen-proof';
+// import Secp256r1Proof from './pages/secp256r1-proof';
 import SkpProof from './pages/skp';
 // import initNoirC from "@noir-lang/noirc_abi";
 // import initACVM from "@noir-lang/acvm_js";
@@ -27,9 +27,9 @@ function App(): React.JSX.Element {
             headerShown: false,
           }}>
           <Stack.Screen name="Home" component={Home} />
-          <Stack.Screen name="ProductProof" component={ProductProof} />
+          {/* <Stack.Screen name="ProductProof" component={ProductProof} />
           <Stack.Screen name="PedersenProof" component={PedersenProof} />
-          <Stack.Screen name="Secp256r1Proof" component={Secp256r1Proof} />
+          <Stack.Screen name="Secp256r1Proof" component={Secp256r1Proof} /> */}
           <Stack.Screen name="skp" component={SkpProof} />
         </Stack.Navigator>
       </NavigationContainer>
