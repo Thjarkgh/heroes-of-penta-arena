@@ -1,0 +1,59 @@
+{
+  "name": "heroes-of-penta-arena",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "android": "react-native run-android",
+    "ios": "react-native run-ios",
+    "lint": "eslint .",
+    "start": "react-native start --experimental-debugger",
+    "test": "jest",
+    "android-devices": "adb devices",
+    "ios-device": "npx react-native run-ios --udid $DEVICE_ID",
+    "ios-device-release": "npx react-native run-ios --configuration Release --udid $DEVICE_ID",
+    "ios-list-devices": "xcrun xctrace list devices",
+    "export": "cd ../circuits/skplg && nargo export && cd ../skplam && nargo export && cd ../skpla && nargo export && cd ../arenalib && nargo export && cd ../skpl && nargo export && cd ../circuit && nargo export && cd ../..",
+    "generate": "npm run export && noir-codegen ../circuits/skpl/export/*.json --out-dir ./logic/skpl && noir-codegen ../circuits/arenalib/export/*.json --out-dir ./logic/arenalib && noir-codegen ../circuits/skpla/export/*.json --out-dir ./logic/skpla && noir-codegen ../circuits/skplam/export/*.json --out-dir ./logic/skplam",
+    "noir-profiler": "cd ../circuits && cd skpl && nargo export && noir-profiler gates --artifact-path ./export/turn.json --backend-path bb --output ./target -- --include_gates_per_opcode",
+    "bb": "cd ../circuits/circuit && nargo compile && nargo e && bb prove -b ./target/skp.json -w ./target/skp.gz -o ./target --verify --scheme ultra_honk && bb write_vk -b ./target/skp.json -o ./target --scheme ultra_honk &&  bb verify -k ./target/vk -p ./target/proof --verbose --scheme ultra_honk"
+
+  },
+  "dependencies": {
+    "@aztec/bb.js": "0.82.0",
+    "@noir-lang/noir_js": "^1.0.0-beta.3",
+    "@react-native-community/hooks": "^3.0.0",
+    "@react-navigation/bottom-tabs": "^6.5.11",
+    "@react-navigation/native": "^6.1.9",
+    "@react-navigation/native-stack": "^6.9.17",
+    "@tamagui/config": "^1.79.17",
+    "date-fns": "^3.0.6",
+    "path": "^0.12.7",
+    "react": "18.2.0",
+    "react-native": "^0.74.3",
+    "react-native-safe-area-context": "^4.10.8",
+    "react-native-screens": "^3.32.0",
+    "tamagui": "^1.79.17",
+    "util": "^0.12.5"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.20.0",
+    "@babel/preset-env": "^7.20.0",
+    "@babel/runtime": "^7.20.0",
+    "@noir-lang/noir_codegen": "^1.0.0-beta.3",
+    "@react-native/babel-preset": "0.74.85",
+    "@react-native/eslint-config": "0.74.85",
+    "@react-native/metro-config": "0.74.85",
+    "@react-native/typescript-config": "0.74.85",
+    "@types/react": "^18.2.6",
+    "@types/react-test-renderer": "^18.0.0",
+    "babel-jest": "^29.6.3",
+    "eslint": "^8.19.0",
+    "jest": "^29.6.3",
+    "prettier": "2.8.8",
+    "react-test-renderer": "18.2.0",
+    "typescript": "5.0.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
