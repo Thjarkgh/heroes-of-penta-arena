@@ -1,5 +1,5 @@
 import { Noir } from '@noir-lang/noir_js';
-import { UltraPlonkBackend } from '@aztec/bb.js';
+import { UltraHonkBackend } from '@aztec/bb.js';
 import type { ProofData, CompiledCircuit } from '@noir-lang/types';
 import type { Circuit, Parameter, ParameterType, ReturnTypeElement } from '../types'; // Adjust path as needed
 import { Buffer } from 'buffer'; // Node.js Buffer polyfill
@@ -300,7 +300,7 @@ export function serializeArguments(args: any, abi: Circuit["abi"]): { [key: stri
 
 interface CircuitInstance {
     noir: Noir;
-    backend: UltraPlonkBackend;
+    backend: UltraHonkBackend;
     circuit: CompiledCircuit; // Store the original compiled circuit JSON/object
     id: string;
 }
@@ -329,7 +329,7 @@ export async function initializeBackend(): Promise<void> {
         console.log("Backend SRS initialization will occur on first circuit setup.");
         // Alternatively, if you have a known small/default circuit:
         // const defaultCircuit = await fetch('/path/to/default_circuit.json').then(res => res.json());
-        // const tempBackend = new UltraPlonkBackend(defaultCircuit.bytecode);
+        // const tempBackend = new UltraHonkBackend(defaultCircuit.bytecode);
         // console.log("Initializing backend SRS...");
         // await tempBackend.init(); // Trigger SRS download/setup
         // await tempBackend.destroy(); // Clean up temporary instance
@@ -376,8 +376,8 @@ export async function setupCircuit(
     try {
         // Ensure backend (and SRS) is initialized
         // This might download SRS on the first call
-        console.log("Initializing UltraPlonkBackend...");
-        const backend = new UltraPlonkBackend(compiledCircuit.bytecode);
+        console.log("Initializing UltraHonkBackend...");
+        const backend = new UltraHonkBackend(compiledCircuit.bytecode);
 
         // Initialize bb.js backend (downloads SRS, initializes WASM) if not done globally
         // This is crucial and replaces the native `prepareSrs` + `setupSrs` logic

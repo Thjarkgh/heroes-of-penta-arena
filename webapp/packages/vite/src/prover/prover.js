@@ -8,7 +8,7 @@ import initACVM from '@noir-lang/acvm_js';
 await Promise.all([initACVM(fetch(acvm)), initNoirC(fetch(noirc))]);
 
 import { Noir } from '@noir-lang/noir_js';
-import { UltraPlonkBackend } from '@aztec/bb.js';
+import { UltraHonkBackend } from '@aztec/bb.js';
 import { Buffer } from 'buffer'; // Use standard import
 // --- Import necessary helpers from your noir adapter ---
 // You might need to bundle these helpers or duplicate them here if direct import isn't feasible
@@ -120,11 +120,11 @@ async function initializeOrGetInstance(circuitJson) {
 
     try {
         // Initialize backend WITH multi-threading
-        const threads = 4; // navigator.hardwareConcurrency || 16; // Use available cores or default
-        console.log(`Initializing UltraPlonkBackend with ${threads} threads...`);
-        backendInstance = new UltraPlonkBackend(bytecode, { threads });
+        const threads = 64; // navigator.hardwareConcurrency || 16; // Use available cores or default
+        console.log(`Initializing UltraHonkBackend with ${threads} threads...`);
+        backendInstance = new UltraHonkBackend(bytecode, { threads });
         // await backendInstance.init(); // This initializes WASM and SRS (if needed)
-        console.log("UltraPlonkBackend initialized.");
+        console.log("UltraHonkBackend initialized.");
 
         console.log("Initializing Noir...");
         noirInstance = new Noir(circuitJson);
