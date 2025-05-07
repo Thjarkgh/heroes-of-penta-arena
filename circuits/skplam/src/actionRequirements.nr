@@ -19,7 +19,7 @@ comptime fn action_def_def(varname: Quoted, bit_size: u8, expr: Quoted, msg: Quo
 }
 // comptime global ACTION_DEF_DEF_FIELD_COUNT: u32 = 11;
 global ACTION_DEF_DEF_REQUIREMENTS: [DEF_ROW<ActionDefDefRequirementCheck>] = [
-    action_def_def(quote { action_req_target_free_space }, 1, quote { can_move_to(distance, action_target_x, action_target_y, my_obstacles, their_obstacles) }, quote { f"Target space cannot be moved to {action_target_x},{action_target_y}) cannot be moved to: {VIEW_DISTANCE},{my_obstacles},{their_obstacles}" }),
+    action_def_def(quote { action_req_target_free_space }, 1, quote { could_move_to_target }, quote { f"Target space cannot be moved to {action_target_x},{action_target_y}) cannot be moved to: {VIEW_DISTANCE},{my_obstacles},{their_obstacles}" }),
     action_def_def(quote { action_req_target_is_not_self }, 1, quote { (actor_x != action_target_x) | (actor_y != action_target_y) }, quote { f"Target cannot be self ({action_target_x},{action_target_y})" }),
     action_def_def(quote { action_req_status_visible }, 1, quote { actor_is_in_view_range & !actor_is_hidden },  quote { f"Character must be fully visible for action {action_type}: in_view_range: {actor_is_in_view_range} & !hidden {actor_is_hidden} for enemy_advance {enemy_advance} @ {actor_x}" }),
     action_def_def(quote { action_req_status_invisible }, 1, quote { !actor_is_in_view_range | actor_is_hidden }, quote { f"Character must not be visible to perform action {action_type}: !in_view_range: {actor_is_in_view_range} || hidden: {actor_is_hidden} for enemy_advance {enemy_advance} @ {actor_x}" }),

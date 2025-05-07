@@ -298,6 +298,7 @@ fn execute_action(
   let actor_target_x = 4 as u8;
   let actor_target_y = 5 as u8;
   let actor_last_action = 0 as u8;
+  let could_move_to_target = true;
   
 
   validate_action_requirements!(quote { is_valid }, quote { ad });
