@@ -132,19 +132,44 @@ pub fn their_x_to_mine(x: u8) -> (bool, u8) {
     }
 }
 
-pub fn can_move_to(distance: u16, x: u8, y: u8, obstacles: [Obstacle; MAX_OBSTACLES], their_obstacles: [Obstacle; MAX_ENEMY_OBSTACLES]) -> bool {
-    let mut can = distance <= (VIEW_DISTANCE as u16 * VIEW_DISTANCE as u16); //x <= advance;
+pub fn is_distance_within_viewing_range(distance: u16) -> bool {
+  distance <= (VIEW_DISTANCE as u16 * VIEW_DISTANCE as u16)
+}
 
+pub fn is_tile_free_or_invisible(x: u8, y: u8, obstacles: [Obstacle; MAX_OBSTACLES], their_obstacles: [Obstacle; MAX_ENEMY_OBSTACLES]) -> bool {
+  let mut can = true;
+  for i in 0..MAX_OBSTACLES {
+      if !is_obstacle_traversible(obstacles[i]) & (get_obstacle_x(obstacles[i]) == x) & (get_obstacle_y(obstacles[i]) == y) {
+          can = false;
+      }
+  }
+  for i in 0..MAX_ENEMY_OBSTACLES {
+      if !is_obstacle_traversible(their_obstacles[i]) & (get_obstacle_x(their_obstacles[i]) == x) & (get_obstacle_y(their_obstacles[i]) == y) {
+          can = false;
+      }
+  }
+  can
+}
+
+global W: u32 = WIDTH as u32;
+global H: u32 = HEIGHT as u32;
+pub fn get_free_map(obstacles: [Obstacle; MAX_OBSTACLES], their_obstacles: [Obstacle; MAX_ENEMY_OBSTACLES]) -> [[u1;W];H] {
     for i in 0..MAX_OBSTACLES {
-        if !is_obstacle_traversible(obstacles[i]) & (get_obstacle_x(obstacles[i]) == x) & (get_obstacle_y(obstacles[i]) == y) {
-            can = false;
-        }
-    }
-    for i in 0..MAX_ENEMY_OBSTACLES {
-        if !is_obstacle_traversible(their_obstacles[i]) & (get_obstacle_x(their_obstacles[i]) == x) & (get_obstacle_y(their_obstacles[i]) == y) {
-            can = false;
-        }
-    }
+      if !is_obstacle_traversible(obstacles[i]) & (get_obstacle_x(obstacles[i]) == x) & (get_obstacle_y(obstacles[i]) == y) {
+          can = false;
+      }
+  }
+  for i in 0..MAX_ENEMY_OBSTACLES {
+      if !is_obstacle_traversible(their_obstacles[i]) & (get_obstacle_x(their_obstacles[i]) == x) & (get_obstacle_y(their_obstacles[i]) == y) {
+          can = false;
+      }
+  }
+}
+
+pub fn can_move_to(distance: u16, x: u8, y: u8, obstacles: [Obstacle; MAX_OBSTACLES], their_obstacles: [Obstacle; MAX_ENEMY_OBSTACLES]) -> bool {
+    let mut can = is_distance_within_viewing_range(distance); //x <= advance;
+    can &= is_tile_free_or_invisible(x, y, obstacles, their_obstacles);
+
     can
 }
 // pub fn their_x_to_mine(side: u1, x: i8) -> i8 {
