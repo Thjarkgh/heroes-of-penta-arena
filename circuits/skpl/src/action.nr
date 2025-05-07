@@ -1,5 +1,5 @@
 // use crate::{ HEIGHT, WIDTH };
-use arenalib::{ NO_EVENT, WAIT, SEE_MOVE, WIDTH };
+use arenalib::{ NO_EVENT, WAIT, SEE_MOVE, WIDTH, HEIGHT };
 use arenalib::{ MAX_ACTIONS, MAX_OBSTACLES };
 use arenalib::{ SERIALIZED_ACTION_BYTE_SIZE, SERIALIZED_ACTIONS_ARRAY_SIZE, SERIALIZED_ACTIONS_PER_FIELD, VIEW_DISTANCE };
 use skplg::{softassert, NOWHERE, UNREADABLE_BYTES_PER_FIELD};
@@ -140,6 +140,7 @@ pub fn execute_action(
     let mut actor_status = actor.get_status();
     // ~200 gates
     apply_action_pre_calc_effects!(quote { action_def });
+        let could_move_to_target = can_move_to(distance, action_target_x, action_target_y, my_obstacles, their_obstacles);
 
 
 ///////////////////////////
@@ -661,6 +662,8 @@ pub fn parse_actions(fields: [Field; SERIALIZED_ACTIONS_ARRAY_SIZE]) -> [Action;
     actions.as_array()
 }
 
+global H: u32 = HEIGHT as u32;
+global W: u32 = WIDTH as u32;
 /**
 * Warning: This function can throw!!!
 */
@@ -694,3 +697,68 @@ pub fn parse_actions(fields: [Field; SERIALIZED_ACTIONS_ARRAY_SIZE]) -> [Action;
 //     }
 //     fields.as_array()
 // }
+
+#[export]
+pub fn get_performable_actions(actor: Character,
+    enemy_advance: u8, energy: u8,
+    my_obstacles: [Obstacle; MAX_OBSTACLES],
+    their_obstacles: [Obstacle; MAX_ENEMY_OBSTACLES]
+    // action_type: u8
+) -> pub [[Field; H]; MAX_ACTIONS_PER_CHARACTER + 1] {
+  // assert(action_type as u32 <= (MAX_ACTIONS_PER_CHARACTER + 1));
+  let enemy_advance = if enemy_advance >= WIDTH { 0 } else { WIDTH - enemy_advance - 1 };
+  let mut result = [[0; H]; MAX_ACTIONS_PER_CHARACTER + 1];
+
+  let actor_id = actor.get_id();
+  let actor_x = actor.get_x();
+  let actor_y = actor.get_y();
+  let actor_target_x = actor.get_target_x();
+  let actor_target_y = actor.get_target_y();
+  let actor_last_action = actor.get_last_action();
+
+  let actor_is_in_view_range = is_visible(enemy_advance, actor_x);
+
+  for action_target_y in 0..HEIGHT {
+    let mut row = [[0 as u8; 32]; MAX_ACTIONS_PER_CHARACTER + 1];
+    for action_target_x in 0..WIDTH {
+      let distance = 1;// get_distance(actor.get_x(), actor.get_y(), action_target_x, action_target_y);
+        let could_move_to_target = can_move_to(distance, action_target_x, action_target_y, my_obstacles, their_obstacles);
+      for action_type in 0..(MAX_ACTIONS_PER_CHARACTER + 1) {
+        let mut is_valid = true;
+        let mut actor_progress = actor.get_progress();
+        let mut actor_is_hidden = actor.get_is_hidden() == 1;
+        let mut is_not_interrupted = true;
+        let mut actor_damage_mod = actor.get_damage_mod();
+        let mut actor_status = actor.get_status();
+        let action_def = actor.actions[action_type];
+        apply_action_pre_calc_effects!(quote { action_def });
+    //        action_def_def(quote { pre_calc_effect_continues_action }, 3, |continued_action|quote { let continues_action: bool = $continued_action as u8 == actor_last_action; }),
+    // action_def_def(quote { pre_calc_effect_is_continuous }, 1, |is_continuous|quote { let is_continuous: bool = $is_continuous as bool; }),
+    // action_def_def(quote { pre_calc_effect_interrupts }, 1, |is_interrupting|quote { let is_interrupting: bool = $is_interrupting as bool; }),
+    // action_def_def(quote { pre_calc_effect_allow_retargeting }, 1, |allows_retargetting|quote { let not_interrupted_through_retargeting: bool = $allows_retargetting as bool | ((action_target_x == actor_target_x) & (action_target_y == actor_target_y)); })
+
+        validate_action_requirements!(quote { is_valid }, quote { action_def });
+        let coords = [
+            (actor_x, actor_y),
+            (action_target_x, action_target_y),
+            (NOWHERE, NOWHERE),
+        ];
+        // let mut result_energy = energy;
+        // let mut result_coords = coords[0];
+        // let mut result_progress = actor_progress;
+        // let mut result_is_hidden = actor_is_hidden;
+        // let mut result_is_visible = actor_is_in_view_range;
+        // let mut result_damage_mod = actor_damage_mod;
+        // let mut result_health = actor.get_health();
+        // let mut result_status = actor_status;
+        // apply_action_result_effects!(quote { action_def });
+        row[action_type][action_target_x] = is_valid as u8;
+      }
+    }
+    for action_type in 0..(MAX_ACTIONS_PER_CHARACTER + 1) {
+      result[action_type][action_target_y] = std::field::bytes32_to_field(row[action_type]);
+    }
+  }
+
+  result
+}

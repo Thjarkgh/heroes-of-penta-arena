@@ -45,6 +45,7 @@ use arenalib::{ATTACK_FIREBALL, ATTACK_RANGED};
 use arenalib::{WAIT};
 use arenalib::get_wait_action_def;
 use arenalib::get_test_action_register;
+pub use action::get_performable_actions;
 
 // mod ResolvedAction;
 
