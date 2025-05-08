@@ -36,7 +36,7 @@ use arenalib::{serialize_actions, parse_actions};
 
 use arenalib::{SERIALIZED_ENEMY_OBSTACLES_ARRAY_SIZE, SERIALIZED_EVENTS_ARRAY_SIZE, SERIALIZED_EVENTS_PER_FIELD, SERIALIZED_OBSTACLES_ARRAY_SIZE, SERIALIZED_OBSTACLES_PER_FIELD, SERIALIZED_OBSTACLE_BYTE_SIZE};
 use arenalib::{WIDTH};
-use arenalib::{MAX_ACTIONS, MAX_CHARACTERS, MAX_EVENTS, MAX_OBSTACLES};
+use arenalib::{MAX_ACTIONS, MAX_CHARACTERS, MAX_EVENTS, MAX_OBSTACLES, MAX_ENEMY_OBSTACLES};
 use arenalib::{VIEW_DISTANCE};
 use arenalib::{ARCHER, KNIGHT, ROGUE, MAGE, RITUALIST};
 use arenalib::{MIN_FIREBALL_ROUNDS_FOR_CAST};
@@ -46,6 +46,8 @@ use arenalib::{WAIT};
 use arenalib::get_wait_action_def;
 use arenalib::get_test_action_register;
 pub use action::get_performable_actions;
+use arenalib::Action;
+use arenalib::get_action_actor;
 
 // mod ResolvedAction;
 
@@ -346,6 +348,41 @@ fn get_serialized_obstacle(id: u8, x: u8, y: u8, obstacle_type: u8) -> pub Field
 //   WIN
 // );
 
+#[export]
+pub fn calculate_action(
+  action: Action,
+  mut my_chars: [Character; MAX_CHARACTERS],
+  mut my_obstacles_parsed: [Obstacle; MAX_OBSTACLES],
+  enemy_objects_parsed: [Obstacle; MAX_ENEMY_OBSTACLES],
+  enemy_advance_input: u8,
+  mut energy: u8
+) -> (bool, [Character; MAX_CHARACTERS], [Obstacle; MAX_OBSTACLES], u8, Event) {
+  let mut success = true;
+  let actor_id = get_action_actor(action);
+  let mut actor = my_chars[actor_id];
+  let (my_chars_as_obstacles_valid, my_chars_as_obstacles) = chars_to_obstacles(my_chars);
+  softassert!(quote { success }, quote { my_chars_as_obstacles_valid }, quote { f"Failed to convert my chars to obstacles: {my_chars}" });
+  let result = execute_action(action, enemy_advance_input, actor, energy, my_chars_as_obstacles, my_obstacles_parsed, enemy_objects_parsed);
+  //assert(result.0);
+  success &= result.0;
+  let result_event = result.1;
+  let internal_event = result.2;
+  let self_event = result.3;
+  actor = result.4;
+  energy = result.5;
+  
+  // 4461 / 5 = 892,2
+  my_chars = my_chars.map(|c| wb_apply_damage_to_char(c, result_event, actor));
+  // 16800 / 24 = 700
+  my_obstacles_parsed = my_obstacles_parsed.map(|obstacle| {
+      let (updated_obstacle_valid, updated_obstacle) = update_my_obstacle(obstacle, result_event);
+      //success = success & updated_obstacle_valid;
+      softassert!(quote { success }, quote { updated_obstacle_valid }, quote { f"Failed to update my obstacle {obstacle}, {result_event}" });
+      updated_obstacle
+  });
+
+  (success, my_chars, my_obstacles_parsed, energy, result_event)
+}
 
 #[export]
 pub fn calculate_turn(
@@ -401,7 +438,7 @@ pub fn calculate_turn(
     softassert!(quote { success }, quote { my_chars_valid }, quote { f"Failed to parse my characters {my_chars}" });
 
     let actor_id = get_actor_from_move(move_input);
-    let mut actor = my_chars[actor_id]; //Character::parse(actor_id, my_chars, events);
+    // let mut actor = my_chars[actor_id]; //Character::parse(actor_id, my_chars, events);
     
     comptime {
         assert(MAX_OBSTACLES == 24);
@@ -427,25 +464,47 @@ pub fn calculate_turn(
         // TODO: ensure that if actor committed suicide, it is not allowed to do any more actions
         let action = actions[i];
         //let resolved_action = actionRegister.resolve_action(action); //resolve_action(action);
-        let result = execute_action(action, enemy_advance_input, actor, energy, my_obstacles_parsed, enemy_objects_parsed);
-        //assert(result.0);
-        success &= result.0;
-        let result_event = result.1;
-        let internal_event = result.2;
-        actor = result.4;
-        energy = result.5;
-        
-        // 4461 / 5 = 892,2
-        my_chars = my_chars.map(|c| wb_apply_damage_to_char(c, result_event, actor));
-        // 16800 / 24 = 700
-        my_obstacles_parsed = my_obstacles_parsed.map(|obstacle| {
-            let (updated_obstacle_valid, updated_obstacle) = update_my_obstacle(obstacle, result_event);
-            //success = success & updated_obstacle_valid;
-            softassert!(quote { success }, quote { updated_obstacle_valid }, quote { f"Failed to update my obstacle {obstacle}, {result_event}" });
-            updated_obstacle
-        });
 
-        result_events_calculated = result_events_calculated.push_back(result_event);
+        let (
+          turn_action_result_action_valid,
+          turn_action_result_my_chars,
+          turn_action_result_my_obstacles_parsed,
+          turn_action_result_energy,
+          turn_action_result_result_event
+        ) = calculate_action(
+          action,
+          my_chars,
+          my_obstacles_parsed,
+          enemy_objects_parsed,
+          enemy_advance_input,
+          energy
+        );
+        softassert!(quote { success }, quote { turn_action_result_action_valid }, quote { f"Failed to execute turn action {i}" });
+
+        my_chars = turn_action_result_my_chars;
+        my_obstacles_parsed = turn_action_result_my_obstacles_parsed;
+        energy = turn_action_result_energy;
+
+        // let result = execute_action(action, enemy_advance_input, actor, energy, my_obstacles_parsed, enemy_objects_parsed);
+        // //assert(result.0);
+        // success &= result.0;
+        // let result_event = result.1;
+        // let internal_event = result.2;
+        // let self_event = result.3;
+        // actor = result.4;
+        // energy = result.5;
+        
+        // // 4461 / 5 = 892,2
+        // my_chars = my_chars.map(|c| wb_apply_damage_to_char(c, result_event, actor));
+        // // 16800 / 24 = 700
+        // my_obstacles_parsed = my_obstacles_parsed.map(|obstacle| {
+        //     let (updated_obstacle_valid, updated_obstacle) = update_my_obstacle(obstacle, result_event);
+        //     //success = success & updated_obstacle_valid;
+        //     softassert!(quote { success }, quote { updated_obstacle_valid }, quote { f"Failed to update my obstacle {obstacle}, {result_event}" });
+        //     updated_obstacle
+        // });
+
+        result_events_calculated = result_events_calculated.push_back(turn_action_result_result_event);
     }
     let result_events_calculated = serialize_events(result_events_calculated.as_array());
     assert(result_events_calculated.len() == SERIALIZED_EVENTS_ARRAY_SIZE);
@@ -714,6 +773,19 @@ fn get_data_hash(secret: Field, characters: Field, character_actions: Serialized
 //     }
 //     std::field::bytes32_to_field(result)
 // }
+
+#[export]
+pub fn chars_to_obstacles(chars: [Character; MAX_CHARACTERS]) -> pub (bool, [Obstacle; MAX_CHARACTERS]) {
+  let mut result: BoundedVec<Obstacle, MAX_CHARACTERS> = BoundedVec::new();
+  let mut valid_result = true;
+  for i in 0..MAX_CHARACTERS {
+    let (valid, char_as_obstacle) = chars[i].to_obstacle();
+    result.push(char_as_obstacle);
+    valid_result &= valid;
+  }
+  assert(result.len() == MAX_CHARACTERS);
+  (valid_result, result.storage())
+}
 
 fn serialize_chars_as_obstacles(enemy_advance: u8, chars: [Character; MAX_CHARACTERS]) -> (bool, Field) {
   let enemy_advance = if enemy_advance >= WIDTH { 0 } else { WIDTH - enemy_advance - 1 };

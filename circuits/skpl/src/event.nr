@@ -13,6 +13,49 @@ use crate::character::{ get_attack_damage_to_tile, get_trap_damage_to_tile };
 use crate::map::their_x_to_mine;
 use skplg::{ debug, softassert, NOWHERE, UNREADABLE_BYTES_PER_FIELD };
 
+// TODO: THIS SHOULD BE GENERATED WITH MACRO!
+// pub global NO_EVENT: u8 = 0 ;
+// pub global DESTROY: u8 = 1;          // actor_id = their_char or their_object when receive - no need to handle, only important to have on-chain for the client //use coordinates to determine tile or trap that got destroyed and update map
+// //pub global DISCOVER = 2;         // actor_id = their_char or their_object when receive - handle to update enemy positions, got health & class (this is for all chars, not just the active one)
+// //pub global SEE_COLUMN = 2 ;      // y = the column the player sees => update objects list
+// pub global SEE_MOVE: u8 = 3 ;        // actor_id = their_char or their_object when receive - no need to handle, only important to have on-chain for the client //handle to update enemy positions => DISCOVER
+// //pub global SEE_SPELL = 4 ;       // actor_id = their_char when receive - need to handle effect via coordinates, => RECEIVE_DAMAGE | DESTROY | LOSE // also need to handle my obstacles
+// pub global SEE_SEARCH_TRAP: u8 = 5 ; // actor_id = their_char when receive - need to create found trap event if there is a trap nearby => FOUND_TRAP
+// pub global SEE_RITUAL: u8 = 6 ;      // actor_id = their_char when receive - no need to handle, only important to have on-chain for the client
+// pub global SEE_CAST: u8 = 7;         // actor_id = their_char when receive - no need to handle, only important to have on-chain for the client
+// pub global SEE_DRAW: u8 = 8;         // actor_id = their_char when receive - no need to handle, only important to have on-chain for the client
+// pub global RECEIVE_EFFECT: u8 = 9;   //NOTE: NEW: This is to be used for status effecting things! actor_id = their_char or their_object when receive - no need to handle, only important to have on-chain for the client
+// pub global RECEIVE_ATTACK: u8 = 10;  // actor_id = 0 when receive - need to handle damage => // no need to events ... health of visible assets gets sent anyway and invisible ones will be updated during discovery //RECEIVE_DAMAGE | DESTROY | LOSE // also need to handle in my obstacles
+// pub global TRIGGERED_TRAP: u8 = 11;  // actor_id = my_char when receive - need to handle damage (for now, later on we might want to handle other effects as well) => RECEIVE_DAMAGE
+// // pub global FOUND_TRAP: u8 = 12;      // actor_id = my_char when receive - no need to handle, only important to have on-chain for the client
+// pub global DISARMED_TRAP: u8 = 13;      // actor_id = their-char when receive - need to remove my trap from the map
+// pub global WIN: u8 = 14;
+// // pub global LOSE: u8 = 15;
+// pub global ADD_OBSTACLE: u8 = 4;
+// pub global EVENT_COUNT: u8 = 16;
+
+pub global EVENT_SUBTYPE_COUNT: u32 = 16;
+pub global EVENT_ARRAY_SIZE: u32 = EVENT_COUNT as u32;
+global AFFECTS_HEALTH: u8 = 1;
+pub global EVENT_DEFINITIONS: [[u8; EVENT_SUBTYPE_COUNT]; EVENT_ARRAY_SIZE] = [
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  0 NO_EVENT
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  1 DESTROY (not implemented)
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  2 ?
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  3 SEE_MOVE
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  4 ?
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  5 SEE_SEARCH_TRAP
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  6 SEE_RITUAL
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  7 SEE_CAST
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  8 SEE_DRAW
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  9 RECEIVE_EFFECT
+  [ AFFECTS_HEALTH, AFFECTS_HEALTH, AFFECTS_HEALTH, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 10 RECEIVE_ATTACK
+  [ AFFECTS_HEALTH, AFFECTS_HEALTH, AFFECTS_HEALTH, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 11 TRIGGERED_TRAP
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 12 ?
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 13 DISARMED_TRAP
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 14 WIN
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]  // 15 ?
+];
+
 pub struct Event {
     pub event: u8,
     pub actor_id: u8,
@@ -147,9 +190,9 @@ impl Event {
         let mut damage = 0;
         let radius = self.radius as u32;
         let radius = radius * radius;
+        let distance = get_distance(self.x, self.y, x, y) as u32;
     
         if self.event == RECEIVE_ATTACK {
-            let distance = get_distance(self.x, self.y, x, y) as u32;
             debug!(quote {
                         // let event = self.event;
                         // let actor = self.actor_id;

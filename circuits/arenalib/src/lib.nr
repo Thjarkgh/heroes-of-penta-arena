@@ -61,7 +61,7 @@ pub global SEE_SEARCH_TRAP: u8 = 5 ; // actor_id = their_char when receive - nee
 pub global SEE_RITUAL: u8 = 6 ;      // actor_id = their_char when receive - no need to handle, only important to have on-chain for the client
 pub global SEE_CAST: u8 = 7;         // actor_id = their_char when receive - no need to handle, only important to have on-chain for the client
 pub global SEE_DRAW: u8 = 8;         // actor_id = their_char when receive - no need to handle, only important to have on-chain for the client
-//pub global RECEIVE_DAMAGE = 9;   // actor_id = their_char or their_object when receive - no need to handle, only important to have on-chain for the client
+pub global RECEIVE_EFFECT: u8 = 9;   //NOTE: NEW: This is to be used for status effecting things! actor_id = their_char or their_object when receive - no need to handle, only important to have on-chain for the client
 pub global RECEIVE_ATTACK: u8 = 10;  // actor_id = 0 when receive - need to handle damage => // no need to events ... health of visible assets gets sent anyway and invisible ones will be updated during discovery //RECEIVE_DAMAGE | DESTROY | LOSE // also need to handle in my obstacles
 pub global TRIGGERED_TRAP: u8 = 11;  // actor_id = my_char when receive - need to handle damage (for now, later on we might want to handle other effects as well) => RECEIVE_DAMAGE
 // pub global FOUND_TRAP: u8 = 12;      // actor_id = my_char when receive - no need to handle, only important to have on-chain for the client
