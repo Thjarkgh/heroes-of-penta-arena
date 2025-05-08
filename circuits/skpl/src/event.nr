@@ -37,7 +37,30 @@ use skplg::{ debug, softassert, NOWHERE, UNREADABLE_BYTES_PER_FIELD };
 pub global EVENT_SUBTYPE_COUNT: u32 = 16;
 pub global EVENT_ARRAY_SIZE: u32 = EVENT_COUNT as u32;
 global AFFECTS_HEALTH: u8 = 1;
+global AFFECTS_STATUS: u8 = 2;
+global AFFECTS_PROGRESS_ADD: u8 = 3;
+global AFFECTS_PROGRESS_SUB: u8 = 3;
 pub global EVENT_DEFINITIONS: [[u8; EVENT_SUBTYPE_COUNT]; EVENT_ARRAY_SIZE] = [
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  0 NO_EVENT
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  1 DESTROY (not implemented)
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  2 ?
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  3 SEE_MOVE
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  4 ?
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  5 SEE_SEARCH_TRAP
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  6 SEE_RITUAL
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  7 SEE_CAST
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  8 SEE_DRAW
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  9 RECEIVE_EFFECT
+  [ AFFECTS_HEALTH, AFFECTS_HEALTH, AFFECTS_HEALTH, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 10 RECEIVE_ATTACK
+  [ AFFECTS_HEALTH, AFFECTS_HEALTH, AFFECTS_HEALTH, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 11 TRIGGERED_TRAP
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 12 ?
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 13 DISARMED_TRAP
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 14 WIN
+  [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]  // 15 ?
+];
+global EVENT_DEF_SIGN_ADD: u8 = 0;
+global EVENT_DEF_SIGN_SUB: u8 = 1;
+pub global EVENT_DEFINITION_SIGNS: [[u8; EVENT_SUBTYPE_COUNT]; EVENT_ARRAY_SIZE] = [
   [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  0 NO_EVENT
   [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  1 DESTROY (not implemented)
   [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], //  2 ?
