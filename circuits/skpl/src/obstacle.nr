@@ -341,6 +341,7 @@ pub fn is_obstacle_valid(obstacle: Obstacle) -> bool {
     (get_obstacle_x(obstacle) < WIDTH) & (get_obstacle_y(obstacle) < HEIGHT)
 }
 
+#[export]
 pub fn parse_their_obstacles(serialized_obstacles: SerializedArenaEnemyObstacles) -> (bool, [Obstacle; MAX_ENEMY_OBSTACLES]) {
   let (dummy_obstacle_valid, dummy_obstacle) = new_obstacle(0, NOWHERE, NOWHERE, 255, 0);
   assert(dummy_obstacle_valid);
