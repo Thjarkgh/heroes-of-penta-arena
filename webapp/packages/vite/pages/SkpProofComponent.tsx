@@ -17,7 +17,7 @@ import {
 
 // --- Type Imports (ASSUMED - Update paths as needed) ---
 import { Circuit } from '../types'; // UPDATE THIS PATH
-import { Action } from '../logic/skpla'; // UPDATE THIS PATH
+import { Action, new_action } from '../logic/skpla'; // UPDATE THIS PATH
 import { Character, Event, Field, Obstacle, u8 } from '../logic/skpl'; // UPDATE THIS PATH
 
 // --- Circuit Imports (ASSUMED - Update paths as needed) ---
@@ -54,6 +54,8 @@ const char_action_labels = [
   ["wait", "move", "attack", "dummy", "dummy",  "dummy",  "dummy"],
   ["wait", "move", "attack", "start cast fireball", "finish cast fireball", "dummy", "dummy"]
 ];
+ const initial_enemy_advance = "0x00";
+ const initial_enemy_objects = ["0x00", "0x00", "0x00", "0x00"];
 
 const isDev = true; //import.meta.env.DEV;
 const proverHtmlSrc = isDev ? '/src/prover/prover.html' : '/prover.html';
@@ -276,12 +278,20 @@ const SkpProofComponent= () => {
               const h = x.toString(16);
               return `0x${h.length % 2 === 0 ? h : '0' + h}`;
           };
+          // 0. initialize with dummy move
+            const enemy_events = initial_enemy_events;
+             const enemy_objects = initial_enemy_objects;
+             const enemy_advance = initial_enemy_advance
 
-            // 1. Deserialize Initial Enemy Events (using main thread noir.ts or direct functions)
+
+            // 1. Deserialize Initial Enemy Events & Objects (using main thread noir.ts or direct functions)
              setStatusMessage('Parsing initial events...');
-             const enemy_events_parsed_result = await skpl.parse_their_events(initial_enemy_events);
+             const enemy_events_parsed_result = await skpl.parse_their_events(enemy_events);
              if (!enemy_events_parsed_result[0]) throw new Error("Failed to parse initial events!");
-             const enemy_events_parsed = enemy_events_parsed_result[1];
+             const enemy_events_parsed = enemy_events_parsed_result[1]; // for UI
+             let theirObjectsParsingResult = await skpl.parse_their_obstacles(enemy_objects);
+             if (!theirObjectsParsingResult[0]) throw new Error("Failed to parse initial enemy objects");
+             let theirObjects = theirObjectsParsingResult[1];
 
             // 2. Deserialize Initial Characters
              setStatusMessage('Parsing initial characters...');
@@ -289,14 +299,14 @@ const SkpProofComponent= () => {
              if (!my_chars_parse_result[0]) throw new Error("Failed to parse NFT characters");
              const my_chars = my_chars_parse_result[1];
 
-             // 3. Placement Phase
+             // 3. Placement Phase (let player do this)
              my_chars[0].x = "0x09"; my_chars[0].y = "0x02";
              my_chars[1].x = "0x0b"; my_chars[1].y = "0x03";
              my_chars[2].x = "0x0c"; my_chars[2].y = "0x04";
              my_chars[3].x = "0x0a"; my_chars[3].y = "0x04";
              my_chars[4].x = "0x0a"; my_chars[4].y = "0x07";
 
-            // 4. Create Obstacles
+            // 4. Create Obstacles (let player do this)
              setStatusMessage('Creating obstacles...');
              const obstacleData = [
               { id: "0x00", x: "0x00", y: "0x02", health: 200, type: WALL }, { id: "0x01", x: "0x01", y: "0x02", health: 200, type: WALL },
@@ -321,17 +331,50 @@ const SkpProofComponent= () => {
                 // )
             }));
              if (!myObstaclesParsedResults.every(r => r[0])) throw new Error("Failed to create obstacles!");
-             const myObstacles = myObstaclesParsedResults.map(r => r[1]);
+             let myObstacles = myObstaclesParsedResults.map(r => r[1]);
 
-            // 5. Define Player Actions
-                        const move = "0x00"; // Assuming move 0
-                        const actor_id = "0x00"; // Assuming first character acts
-                        const actions: Action[] = [ // max 4
-                            { action_type: "0x01", actor_id: actor_id, target_x: "0x0a", target_y: "0x02" },
-                            // { action_type: "0x01", actor_id: actor_id, target_x: "0x0b", target_y: "0x02" },
-                            // { action_type: "0x01", actor_id: actor_id, target_x: "0x0c", target_y: "0x02" },
-                            { action_type: "0x03", actor_id: actor_id, target_x: "0x10", target_y: "0x03" }
-                        ];
+             // 5 Define Player Actions
+             // Loop: Get performable player actions map, then let player chose action, update game, then get performaable actions again!
+             // for now: simulate player!
+
+            const move = 0; // Assuming move 0
+            const actor_id = 0; // Assuming first character acts
+            let energyLeft = 12; // initial
+            let actionsPhaseFinished: boolean = false;
+            const actions: Action[] = []; // max 4
+            let my_chars_for_calc = my_chars;
+            while (actionsPhaseFinished !== true && actions.length < 4) {
+              const myCharsAsObjectsResult = await skpl.chars_to_obstacles(my_chars_for_calc);
+              if (!myCharsAsObjectsResult[0]) throw new Error("Failed to serialize my characters as objects");
+
+              const myObjects = myObstacles.map(x=>x);
+              myObjects.push(...myCharsAsObjectsResult[1]);
+              const performableActions = await skpl.get_performable_actions(my_chars_for_calc[actor_id], initial_enemy_advance, toHex(energyLeft), myObjects, theirObjects)
+              
+              // simulate player
+              if (actions.length === 0) {
+                // simulate adding move:
+                const action = await new_action(toHex(1), toHex(actor_id), toHex(10), toHex(2)); //{ action_type: "0x01", actor_id: actor_id, target_x: "0x0a", target_y: "0x02" };
+                const actionResult = await skpl.calculate_action(action, my_chars_for_calc, myObstacles, theirObjects, enemy_advance, toHex(energyLeft));
+                if (!actionResult[0]) throw new Error(`Invalid action calc result`);
+                my_chars_for_calc = actionResult[1];
+                myObstacles = actionResult[2];
+                energyLeft = Number.parseInt(actionResult[3].replaceAll("0x", ""), 16);
+                const resultevent = actionResult[4]; // for UI
+                actions.push(action);
+              } else {
+                // simulate adding draw-bow-move:
+                const action = await new_action(toHex(3), toHex(actor_id), toHex(16), toHex(3)); //{ action_type: "0x03", actor_id: actor_id, target_x: "0x10", target_y: "0x03" };
+                const actionResult = await skpl.calculate_action(action, my_chars_for_calc, myObstacles, theirObjects, enemy_advance, toHex(energyLeft));
+                if (!actionResult[0]) throw new Error(`Invalid action calc result`);
+                my_chars_for_calc = actionResult[1];
+                myObstacles = actionResult[2];
+                energyLeft = Number.parseInt(actionResult[3].replaceAll("0x", ""), 16);
+                const resultevent = actionResult[4]; // for UI
+                actions.push(action);
+                actionsPhaseFinished = true; // player clicks finish move or energyLeft === 0
+              }
+            }
 
             // 6. Serialize Inputs for Turn Calculation
              setStatusMessage('Serializing inputs...');
@@ -341,27 +384,24 @@ const SkpProofComponent= () => {
              const my_obstacles_input_serialized = await skpl.serialize_my_obstacles_for_me(myObstacles);
             const serializeActions = async (actions: Action[]) => {
               if (actions.length === 4) {
-                return arenalib.serialize_actions_4(actor_id, actions);
+                return arenalib.serialize_actions_4(toHex(actor_id), actions);
               }
               if (actions.length === 3) {
-                return arenalib.serialize_actions_3(actor_id, actions);
+                return arenalib.serialize_actions_3(toHex(actor_id), actions);
               }
               if (actions.length === 2) {
-                return arenalib.serialize_actions_2(actor_id, actions);
+                return arenalib.serialize_actions_2(toHex(actor_id), actions);
               }
               if (actions.length === 1) {
-                return arenalib.serialize_actions_1(actor_id, actions[0]);
+                return arenalib.serialize_actions_1(toHex(actor_id), actions[0]);
               }
               if (actions.length === 0) {
-                return arenalib.serialize_actions_0(actor_id);
+                return arenalib.serialize_actions_0(toHex(actor_id));
               }
               throw new Error(`invalid action number ${actions.length}`);
             }
             const actions_input_serialized = await serializeActions(actions);
 
-            // 7. Define Enemy State
-             const enemy_advance = "0x00";
-             const enemy_objects = ["0x00", "0x00", "0x00", "0x00"];
 
             // 8. Calculate Turn Result
              setStatusMessage('Calculating turn...');
@@ -370,9 +410,9 @@ const SkpProofComponent= () => {
               my_char_actions_input_serialized,
               my_obstacles_input_serialized,
               actions_input_serialized,
-              move,
-              enemy_advance,
-              enemy_objects,
+              toHex(move),
+              initial_enemy_advance,
+              initial_enemy_objects,
               initial_enemy_events);
              if (!turnResult[0]) throw new Error("Turn calculation failed!");
              const [ , my_result_chars_serialized, my_result_char_actions_serialized, my_result_obstacles, my_result_advance, my_result_events_serialized, my_result_objects_serialized] = turnResult;
@@ -391,8 +431,8 @@ const SkpProofComponent= () => {
                  my_obstacles_input: my_obstacles_input_serialized,
                  actions: actions_input_serialized,
                  move,
-                 enemy_advance,
-                 enemy_objects,
+                 enemy_advance: initial_enemy_advance,
+                 enemy_objects: initial_enemy_objects,
                  enemy_events: initial_enemy_events, // Pass the initial string array format expected by the circuit
                  my_result_advance,
                  my_result_events: my_result_events_serialized,
