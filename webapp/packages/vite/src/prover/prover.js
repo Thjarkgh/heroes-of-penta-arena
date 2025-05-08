@@ -182,7 +182,7 @@ self.addEventListener('message', async (event) => {
 
             // Convert Map publicInputs to a plain array or object for postMessage if needed
             // (Maps generally transfer okay, but converting can be safer)
-            const publicInputsArray = Array.from(proofData.publicInputs.entries());
+            const publicInputsArray = Array.from(proofData.publicInputs.values());
 
              console.log("Sending proof back to parent.");
             self.parent.postMessage({
