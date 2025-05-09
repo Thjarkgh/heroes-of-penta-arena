@@ -3,7 +3,8 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 // import ProtectedRoute from './components/ProtectedRoute';
 // import Layout from './components/Layout';
 // import LoginPage from './pages/LoginPage';
-import SkpProofComponent from './pages/SkpProofComponent';
+// import SkpProofComponent from './pages/SkpProofComponent';
+import GameManager from './pages/GameUI/GameManager';
 import './index.css'; // Import global styles
 
 function App() {
@@ -12,7 +13,7 @@ function App() {
       <BrowserRouter>
         <Routes>
 
-            <Route index element={<SkpProofComponent />} /> {/* Default page */}
+            <Route index element={<GameManager />} /> {/* Default page */}
             <Route path="*" element={<div>Not Found</div>} /> {/* Catch-all inside protected */}
         </Routes>
       </BrowserRouter>

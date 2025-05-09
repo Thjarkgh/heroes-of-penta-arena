@@ -349,7 +349,8 @@ const SkpProofComponent= () => {
 
               const myObjects = myObstacles.map(x=>x);
               myObjects.push(...myCharsAsObjectsResult[1]);
-              const performableActions = await skpl.get_performable_actions(my_chars_for_calc[actor_id], initial_enemy_advance, toHex(energyLeft), myObjects, theirObjects)
+              const performableActions = await skpl.get_performable_actions(my_chars_for_calc[actor_id], initial_enemy_advance, toHex(energyLeft), myObjects, theirObjects);
+              // these actions should be offered to player in UI!
               
               // simulate player
               if (actions.length === 0) {
