@@ -730,10 +730,10 @@ pub fn get_performable_actions(actor: Character,
     my_obstacles: [Obstacle; MAX_ENEMY_OBSTACLES],
     their_obstacles: [Obstacle; MAX_ENEMY_OBSTACLES]
     // action_type: u8
-) -> pub [[Field; H]; MAX_ACTIONS_PER_CHARACTER + 1] {
+) -> pub [[[u8; W]; H]; MAX_ACTIONS_PER_CHARACTER + 1] {
   // assert(action_type as u32 <= (MAX_ACTIONS_PER_CHARACTER + 1));
   let enemy_advance = if enemy_advance >= WIDTH { 0 } else { WIDTH - enemy_advance - 1 };
-  let mut result = [[0; H]; MAX_ACTIONS_PER_CHARACTER + 1];
+  let mut result = [[[0; W]; H]; MAX_ACTIONS_PER_CHARACTER + 1];
 
   let actor_id = actor.get_id();
   let actor_x = actor.get_x();
@@ -787,7 +787,8 @@ pub fn get_performable_actions(actor: Character,
       }
     }
     for action_type in 0..(MAX_ACTIONS_PER_CHARACTER + 1) {
-      result[action_type][action_target_y] = std::field::bytes32_to_field(row[action_type]);
+      // result[action_type][action_target_y] = std::field::bytes32_to_field(row[action_type]);
+      result[action_type][action_target_y] = row[action_type];
     }
   }
 
