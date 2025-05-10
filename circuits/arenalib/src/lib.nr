@@ -10,47 +10,35 @@ pub use actionSerDe::{serialize_actions, parse_actions};
 pub use skpla::ActionDefinitionRegister;
 
 // MAP
-pub global WIDTH_BITS: u8 = 5;
-pub global WIDTH_MASK: u8 = (1 << WIDTH_BITS) - 1;
-pub global WIDTH: u8 = 1 << WIDTH_BITS;
-pub global HEIGHT_BITS: u8 = 4;
-pub global HEIGHT_MASK: u8 = (1 << HEIGHT_BITS) - 1;
-pub global HEIGHT: u8 = 10;
+pub global WIDTH_BITS: u8 = 5;                       // choose from 1-5
+pub global WIDTH_MASK: u8 = (1 << WIDTH_BITS) - 1;   // do not change!
+pub global WIDTH: u8 = 1 << WIDTH_BITS;              // choose from 1 - (1 << WIDTH_BITS)
+pub global HEIGHT_BITS: u8 = 4;                      // choose from 1-4
+pub global HEIGHT_MASK: u8 = (1 << HEIGHT_BITS) - 1; // do not change!
+pub global HEIGHT: u8 = 10;                          // choose from 1 - (1 << HEIGHT_BITS)
 // pub global NOWHERE: u8 = 255;
 
-// CLASSES
+// CLASSES (for demo)
 //pub global UNKNOWN_CLASS: u8 = 0;
 pub global ARCHER: u8 = 1;
 pub global RITUALIST: u8 = 2;
 pub global ROGUE: u8 = 3;
 pub global KNIGHT: u8 = 4;
 pub global MAGE: u8 = 5;
-pub global CLASS_BITS: u8 = 3;
-pub global CLASS_MASK: u8 = (1 << CLASS_BITS) - 1;
-pub global CLASS_COUNT: u32 = 6;
-pub global MAX_ACTIONS_PER_CHARACTER: u32 = 6;
+pub global CLASS_BITS: u8 = 3;                     // choose from 1 - 3
+pub global CLASS_MASK: u8 = (1 << CLASS_BITS) - 1; // do not change!
+pub global CLASS_COUNT: u32 = 6;                   // choose from 1 - (1 << CLASS_BITS)
+pub global MAX_ACTIONS_PER_CHARACTER: u32 = 6;     // choose from 1 - 255 (not recommended to go higher than absolutely necessary!)
 
 // ACTIONS
-pub global WAIT: u8 = 0;
-//pub global SNEAK: u8 = 1;
-//pub global MOVE: u8 = 2;          // => SEE_COLUMN (depr: MOVE)
-//pub global RITUAL: u8 = 3;        // => SEE_RITUAL | WIN
-//pub global SEARCH: u8 = 4;        // => SEE_SEARCH_TRAP
-//pub global ATTACK: u8 = 5;        // => RECEIVE_ATTACK | DESTROY // affects my obstacles; TODO: with more attack types might also affect other own characters
-//pub global CAST: u8 = 6;          // => SEE_CAST // affects my obstacles; TODO: with more attack types might also affect other own characters
-//pub global CAST_FIREBALL: u8 = 7; // => RECEIVE_ATTACK // affects other characters if status == FIREBALL_ROUNDS_FOR_CAST
-//pub global DRAW: u8 = 8;          // => SEE_DRAW
-//pub global SHOOT: u8 = 9;         // => RECEIVE_ATTACK
-//pub global TRIGGER_TRAP = 9;  // => TRIGGERED_TRAP ?????????
-//pub global DISARM_TRAP: u8 = 10;  // => DESTROY
-//pub global SET_TRAP: u8 = 11;
-pub global ACTION_COUNT: u32 = 12;
-pub global ACTION_RESULT_EVENT_COUNT: u32 = 4;
-pub global ACTION_RESULT_COORDINATES_IDX_SELF: u8 = 0;
-pub global ACTION_RESULT_COORDINATES_IDX_TARGET: u8 = 1;
-pub global ACTION_RESULT_COORDINATES_IDX_INVISIBLE: u8 = 2;
+pub global WAIT: u8 = 0;                                    // DO NOT CHANGE!
+pub global ACTION_RESULT_EVENT_COUNT: u32 = MAX_EVENTS;     // do not change!
 
-// EVENTS
+pub global ACTION_RESULT_COORDINATES_IDX_SELF: u8 = 0;      // internal - do not change!
+pub global ACTION_RESULT_COORDINATES_IDX_TARGET: u8 = 1;    // internal - do not change!
+pub global ACTION_RESULT_COORDINATES_IDX_INVISIBLE: u8 = 2; // internal - do not change!
+
+// EVENTS (atm, do not change - next minor version will have this modifiable!)
 pub global NO_EVENT: u8 = 0 ;
 pub global DESTROY: u8 = 1;          // actor_id = their_char or their_object when receive - no need to handle, only important to have on-chain for the client //use coordinates to determine tile or trap that got destroyed and update map
 //pub global DISCOVER = 2;         // actor_id = their_char or their_object when receive - handle to update enemy positions, got health & class (this is for all chars, not just the active one)
@@ -71,8 +59,6 @@ pub global WIN: u8 = 14;
 pub global ADD_OBSTACLE: u8 = 4;
 pub global EVENT_COUNT: u8 = 16;
 
-// SUBTYPES:
-pub global WIN_BY_RITUAL: u8 = 1;
 
 // ATTACKS
 pub global ATTACK_MELEE: u8 = 0;
@@ -82,7 +68,7 @@ pub global ATTACK_FIREBALL: u8 = 2;
 // TODO: instead of enum, use a pub global array of structs with damage, range, etc.
 
 
-// TILES
+// TILES - define any value from 1-15 (only 0 should stay reserved for EMPTY)
 pub global EMPTY: u8 = 0;
 pub global WALL: u8 = 6;
 pub global WATER: u8 = 7;
@@ -96,30 +82,21 @@ pub global TRAP_FOUND: u8 = 12;
 pub global BODY: u8 = 13;
 pub global BODY_LOOTED: u8 = 14;
 // pub global FOG: u8 = 15;
-pub global MAX_OBSTACLE_TYPE: u8 = 0x0f;
+pub global MAX_OBSTACLE_TYPE: u8 = 0x0f; // do not change!
 // pub global TILE_COUNT: u8 = 16;
-// unknown_class, flag, trap, trap_used, trap_found, body, body_looted, fog
-// STATUS
-pub global RITUAL_ROUNDS_FOR_WIN: u8 = 15;
-pub global MIN_FIREBALL_ROUNDS_FOR_CAST: u8 = 3;
-pub global MAX_FIREBALL_ROUNDS_FOR_CAST: u8 = 6;
-// pub global DRAW_ROUNDS_FOR_SHOOT: u8 = 1;
-pub global MIN_DRAW_ROUNDS_FOR_SHOOT: u8 = 1;
-pub global MAX_DRAW_ROUNDS_FOR_SHOOT: u8 = 3;
+
+// PROGRESS
 pub global PROGRESS_BITS: u8 = 4;
 pub global PROGRESS_MASK: u8 = (1 << PROGRESS_BITS) - 1;
 pub global PROGRESS_COUNT: u8 = 16 ; // just to be more in line with the other constants, actually used as a counter
 pub global MAX_HEALTH: u8 = 255;
 
 // GAMEPLAY
-pub global VIEW_DISTANCE: u8 = 6;
-// pub global MAX_TRAPS: u32 = 8; // note: only lowest bit of first byte of field is usable! => ! Field = 1 bit + 31 bytes!
-// pub global TRAPS_BUFFER_SIZE: Field = 16;
-// pub global TRAPS_BUFFER_MASK: Field = 15; // has to be 2^n - 1
+pub global VIEW_DISTANCE: u8 = 6; // 0 - 255
 pub global MAX_ACTIONS: u32 = 4;
 pub global MAX_EVENTS: u32 = 4; // = MAX_ACTIONS // NO! handle traps in a different way (by passing as argument!)+ 4 (2 FOUND_TRAP + WIN/LOSE + 1 reserved)
 pub global MAX_OBSTACLES: u32 = 24; // leave traps for now + MAX_TRAPS; // 24 + 8 player placeables
-pub global MAX_ENEMY_OBSTACLES: u32 = MAX_OBSTACLES + MAX_CHARACTERS;
+pub global MAX_ENEMY_OBSTACLES: u32 = MAX_OBSTACLES + MAX_CHARACTERS; // do not change!
 pub global MAX_CHARACTERS: u32 = 5;
 pub global MIN_PROGRESS: u8 = 0;
 pub global MAX_PROGRESS: u8 = PROGRESS_COUNT - 1;
@@ -134,6 +111,30 @@ pub global SERIALIZED_ACTION_BYTE_SIZE: u32 = 5;
 pub global SERIALIZED_ACTIONS_ARRAY_SIZE: u32 = 1;
 pub global SERIALIZED_ACTIONS_PER_FIELD: u32 = 4; // could be up to 6, but we only use 4
 
+// INTERNAL GLOBALS FOR DEMO/TESTING
+pub global RITUAL_ROUNDS_FOR_WIN: u8 = 15;
+pub global MIN_FIREBALL_ROUNDS_FOR_CAST: u8 = 3;
+pub global MAX_FIREBALL_ROUNDS_FOR_CAST: u8 = 6;
+pub global MIN_DRAW_ROUNDS_FOR_SHOOT: u8 = 1;
+pub global MAX_DRAW_ROUNDS_FOR_SHOOT: u8 = 3;
+//pub global SNEAK: u8 = 1;
+//pub global MOVE: u8 = 2;          // => SEE_COLUMN (depr: MOVE)
+//pub global RITUAL: u8 = 3;        // => SEE_RITUAL | WIN
+//pub global SEARCH: u8 = 4;        // => SEE_SEARCH_TRAP
+//pub global ATTACK: u8 = 5;        // => RECEIVE_ATTACK | DESTROY // affects my obstacles; TODO: with more attack types might also affect other own characters
+//pub global CAST: u8 = 6;          // => SEE_CAST // affects my obstacles; TODO: with more attack types might also affect other own characters
+//pub global CAST_FIREBALL: u8 = 7; // => RECEIVE_ATTACK // affects other characters if status == FIREBALL_ROUNDS_FOR_CAST
+//pub global DRAW: u8 = 8;          // => SEE_DRAW
+//pub global SHOOT: u8 = 9;         // => RECEIVE_ATTACK
+//pub global TRIGGER_TRAP = 9;  // => TRIGGERED_TRAP ?????????
+//pub global DISARM_TRAP: u8 = 10;  // => DESTROY
+//pub global SET_TRAP: u8 = 11;
+//pub global ACTION_COUNT: u32 = 12;
+// pub global MAX_TRAPS: u32 = 8; // note: only lowest bit of first byte of field is usable! => ! Field = 1 bit + 31 bytes!
+// pub global TRAPS_BUFFER_SIZE: Field = 16;
+// pub global TRAPS_BUFFER_MASK: Field = 15; // has to be 2^n - 1
+// SUBTYPES:
+pub global WIN_BY_RITUAL: u8 = 1;
 
 pub type SerializedArenaActionDefinitions = SerializedRosterActionDefinitions<MAX_ACTIONS_PER_CHARACTER, MAX_CHARACTERS>;
 pub type SerializedArenaCharacterActionDefinitions = SerializedCharacterActionDefinitions<MAX_ACTIONS_PER_CHARACTER>;
@@ -206,6 +207,7 @@ fn test_builder() {
   assert(action[0] == 0);
 }
 
+// Note: Apparently better for Noir to define this once static, than regenerate it all the time
 global wait_action: ActionDefinition = [0, 0, 240, 0, 255, 0, 0, 1, 0, 32, 0, 0, 0, 0, 32, 0, 0, 0, 0, 32, 0, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0];
 pub fn get_wait_action_def() -> ActionDefinition {
   wait_action
@@ -221,23 +223,28 @@ fn test_wait_action() {
   }
 }
 
-  #[test]
-  fn test_serde() {
-    let actions = [
-      new_action(1, 2, 3, 4),
-      new_action(1, 2, 3, 4),
-      new_action(1, 2, 3, 4),
-      new_action(1, 2, 3, 4)
-    ];
-    let actions_serialized = serialize_actions(2, actions);
-    let (actions_parsed_valid, actions_parsed) = parse_actions(MAX_CHARACTERS as u8, actions_serialized);
-    assert(actions_parsed_valid);
+#[test]
+fn test_serde() {
+  let actions = [
+    new_action(1, 2, 3, 4),
+    new_action(1, 2, 3, 4),
+    new_action(1, 2, 3, 4),
+    new_action(1, 2, 3, 4)
+  ];
+  let actions_serialized = serialize_actions(2, actions);
+  let (actions_parsed_valid, actions_parsed) = parse_actions(MAX_CHARACTERS as u8, actions_serialized);
+  assert(actions_parsed_valid);
 
-    // println(actions_parsed);
-    // println(actions);
+  // println(actions_parsed);
+  // println(actions);
 
-    assert(actions_parsed.len() == actions.len());
-  }
+  assert(actions_parsed.len() == actions.len());
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// INTEGRATION TESTS                                                                             //
+///////////////////////////////////////////////////////////////////////////////////////////////////
 
 fn get_x_of_side(side: u1, x: u8) -> u8 {
     x * ((side as u8 + 1) as u1) as u8 + side as u8 * (WIDTH - 1 - x)

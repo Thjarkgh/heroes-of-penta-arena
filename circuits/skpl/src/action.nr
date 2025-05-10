@@ -3,7 +3,7 @@ use arenalib::{ NO_EVENT, WAIT, SEE_MOVE, WIDTH, HEIGHT };
 use arenalib::{ MAX_ACTIONS, MAX_OBSTACLES };
 use arenalib::{ SERIALIZED_ACTION_BYTE_SIZE, SERIALIZED_ACTIONS_ARRAY_SIZE, SERIALIZED_ACTIONS_PER_FIELD, VIEW_DISTANCE };
 use skplg::{softassert, NOWHERE, UNREADABLE_BYTES_PER_FIELD};
-use arenalib::{Action, get_action_actor, get_action_target_x, get_action_target_y, get_action_type, new_action};
+use arenalib::{Action, get_action_target_x, get_action_target_y, get_action_type, new_action};
 // use crate::NON_EMPTY_WALKABLE_TILE_MIN;
 use crate::character::Character;
 use crate::event::Event;
@@ -17,7 +17,7 @@ use arenalib::{MAX_ACTIONS_PER_CHARACTER, MAX_ENEMY_OBSTACLES, MAX_CHARACTERS};
 // use crate::actionDefinition::{ build_move_action };
 use arenalib::{apply_action_result_effects, apply_action_pre_calc_effects, validate_action_requirements, build_result_event};
 use arenalib::arena_action_def_builder;
-use super::{map::get_distance_from_parts, map::get_distance_part, map::is_distance_within_viewing_range, obstacle::new_obstacle, map::get_free_map};
+use crate::{map::is_distance_within_viewing_range, obstacle::new_obstacle, map::get_free_map};
 use arenalib::MAX_HEALTH;
 
 // use crate::{ACTION_RESULT_COORDINATES_IDX_SELF, ACTION_RESULT_COORDINATES_IDX_TARGET, ACTION_RESULT_COORDINATES_IDX_INVISIBLE};
