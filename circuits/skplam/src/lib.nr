@@ -65,10 +65,10 @@ fn test_build_action() {
 }
 
 pub struct FrontendActionDefinition {
-  requirements: FrontendActionDefRequirements,
-  pre_calc_effects: FrontendActionDefPreCalcEffects,
-  result_effects: FrontendActionDefResultEffects,
-  result_events: [FrontendActionDefResultEvent; 4]
+  pub requirements: FrontendActionDefRequirements,
+  pub pre_calc_effects: FrontendActionDefPreCalcEffects,
+  pub result_effects: FrontendActionDefResultEffects,
+  pub result_events: [FrontendActionDefResultEvent; 4]
 }
 
 // NOTE: For now, events count is hardcoded @ 4 => if we at some point have more => add more functions
@@ -104,7 +104,7 @@ fn test_build_frontend_action() {
   let req_min_progress = 5 as u8;
   let req_max_progress = 11 as u8;
   let req_status = 6 as u8;
-  let req_range = 9 as u8;
+  let req_range = 255 as u8;
   let req = build_action_def_requirements(
     req_free_space,
     req_not_self,

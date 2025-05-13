@@ -19,7 +19,7 @@ comptime fn action_def_def(varname: Quoted, bit_size: u8, expr: Quoted, msg: Quo
 }
 // comptime global ACTION_DEF_DEF_FIELD_COUNT: u32 = 11;
 global ACTION_DEF_DEF_REQUIREMENTS: [DEF_ROW<ActionDefDefRequirementCheck>] = [
-    action_def_def(quote { action_req_target_free_space }, 1, quote { can_move_to(distance, action_target_x, action_target_y, my_obstacles, their_obstacles) }, quote { f"Target space cannot be moved to {action_target_x},{action_target_y}) cannot be moved to: {VIEW_DISTANCE},{my_obstacles},{their_obstacles}" }),
+    action_def_def(quote { action_req_target_free_space }, 1, quote { could_move_to_target }, quote { f"Target space cannot be moved to {action_target_x},{action_target_y}) cannot be moved to: {VIEW_DISTANCE},{my_obstacles},{their_obstacles}" }),
     action_def_def(quote { action_req_target_is_not_self }, 1, quote { (actor_x != action_target_x) | (actor_y != action_target_y) }, quote { f"Target cannot be self ({action_target_x},{action_target_y})" }),
     action_def_def(quote { action_req_status_visible }, 1, quote { actor_is_in_view_range & !actor_is_hidden },  quote { f"Character must be fully visible for action {action_type}: in_view_range: {actor_is_in_view_range} & !hidden {actor_is_hidden} for enemy_advance {enemy_advance} @ {actor_x}" }),
     action_def_def(quote { action_req_status_invisible }, 1, quote { !actor_is_in_view_range | actor_is_hidden }, quote { f"Character must not be visible to perform action {action_type}: !in_view_range: {actor_is_in_view_range} || hidden: {actor_is_hidden} for enemy_advance {enemy_advance} @ {actor_x}" }),
@@ -29,7 +29,7 @@ global ACTION_DEF_DEF_REQUIREMENTS: [DEF_ROW<ActionDefDefRequirementCheck>] = [
     action_def_def(quote { action_req_max_progress }, 4, quote { action_req_max_progress as u8 >= actor_progress as u8 }, quote { f"Character cannot have a higher progress than {action_req_max_progress} to perform action {action_type}: got {actor_progress}" }),
     action_def_def(quote { action_req_status }, 4, quote { (action_req_status as u8 == 0 as u8) | (action_req_status as u8 == actor_progress as u8) }, quote { f"Character can only perform action {action_type} while having status {action_req_status}. Invalid status {actor_status}" }),
     // action_def_def(quote { action_req_required_energy }, 4, quote { action_req_required_energy <= energy }, quote { f"Character has insufficient energy left to perform action {action_type}: {energy} < {action_req_required_energy}" }),
-    action_def_def(quote { action_req_max_range }, 6, quote { distance as u16 <= (action_req_max_range as u16) * (action_req_max_range as u16) }, quote { f"Character is out of range! Distance: {distance} > {action_req_max_range}: {{{actor_x},{actor_y}}} - {{{action_target_x},{action_target_y}}} with {action_req_max_range}" }),
+    action_def_def(quote { action_req_max_range }, 8, quote { distance as u16 <= (action_req_max_range as u16) * (action_req_max_range as u16) }, quote { f"Character is out of range! Distance: {distance} > {action_req_max_range}: {{{actor_x},{actor_y}}} - {{{action_target_x},{action_target_y}}} with {action_req_max_range}" }),
 ];
 pub comptime fn get_action_def_requirements_base_index() -> u32 {
   UNREADABLE_BYTES_PER_FIELD as u32

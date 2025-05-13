@@ -1,0 +1,45 @@
+{
+	"compiler": {
+		"version": "0.8.22+commit.4fc1097e"
+	},
+	"language": "Solidity",
+	"output": {
+		"abi": [],
+		"devdoc": {
+			"kind": "dev",
+			"methods": {},
+			"version": 1
+		},
+		"userdoc": {
+			"kind": "user",
+			"methods": {},
+			"version": 1
+		}
+	},
+	"settings": {
+		"compilationTarget": {
+			"git_repositories/noir/skp/contract/skp/plonk_vk.sol": "UltraVerificationKey"
+		},
+		"evmVersion": "shanghai",
+		"libraries": {},
+		"metadata": {
+			"bytecodeHash": "ipfs"
+		},
+		"optimizer": {
+			"enabled": true,
+			"runs": 2000
+		},
+		"remappings": []
+	},
+	"sources": {
+		"git_repositories/noir/skp/contract/skp/plonk_vk.sol": {
+			"keccak256": "0xc66829b67dbd9e8144d68de8bd883f0ddac646faa4a0f42166e0d1ee174c789a",
+			"license": "Apache-2.0",
+			"urls": [
+				"bzz-raw://5d6f775dc54214a07a8b49534e5577f07c3cbd963a94c0a31a02e1821fd2e93d",
+				"dweb:/ipfs/Qmc6wejULfoX5QCvCDzX1fbkFHma6YeyVXuS8DU5LBcSWy"
+			]
+		}
+	},
+	"version": 1
+}

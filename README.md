@@ -1,163 +1,272 @@
-# heroes-of-penta-arena
+# Heroes of Penta - Arena
 
-## Description
+Heroes of Penta - Arena is a serverless 1vs1 PvP turn-based TRPG ENGINE.
 
-Heroes of Penta: Arena is a PvP TRPG using Noir ZK-proofs to validate proofs without a server. It is based on the [Noir React Native Starter](https://github.com/madztheo/noir-react-native-starter) repo from madztheo.
+**Build a game engine or build a game**
 
-## Mobile proving
+There is this famous saying: Build a game engine or build a game, you can't do both. Thus, what started in the V0rtex Hackathon 2024 as a game project, became a game-engine project in this year's Noirhack hackathon.
 
-### iOS
+## Motivation
 
-Theoretically, this app integrates with the [Swoir library](https://github.com/Swoir/Swoir) to generate proofs with Noir on iOS as in the Noir React Native Starter lib. However, this branch is abandoned. The library is written in Swift and is available as a Swift Package.
+For solo indie game devs, one particular bottleneck that always bothered me, was the reliance on a centralized server. Maintaining a secure and performant game server is no small task, often already requiring the full attention of a fulltime admin plus significant costs for the server itself, meaning, for solo dev projects, this is often not feasible. BUT, with Noir and ZK-Proofs, one can actually circumvent this bottleneck, using client-side ZK-proofs.
 
-### Android
+However, implementing a full game-logic in Noir, with all its constraints, can be another challenging task. This is where the skp engine enters the scene:
 
-The app integrates with [noir_android](https://github.com/madztheo/noir_android), to generate proofs with Noir on Android. This library is written in Kotlin and Java and is loaded in the app with Jitpack in `android/app/build.gradle`.
+## SKPL Engine
 
-## General setup
+Since, so far, there is no Noir game engine, this project tries to remedy this gap in the Noir environment:
+As a game engine, SKPL can be used for basically any ZK task that is turn-based, whether a strategy game, a text adventure or even a verifiable survey - SKPL is here to help you out.
 
-If you are unfamiliar with React Native, you can follow the [official guide](https://reactnative.dev/docs/environment-setup) to set up your environment.
+## Basic Structure of this monorep:
 
-For the rest follow the steps below:
+circuits: This is where the SKPL Engine is at home and all the Noir magic is happening
+mobile: This is a small demo with SKPL Engine use within noir_android - however, due to noir_android stability issues, this is not fully functional at the moment.
+webapp: This is a small demo with SKPL Engine use within a noir.js powered website. For the Noirhack hackathon, there unfortunately was not enough time to finish it..
 
-1. Clone the repository
-2. Run `npm install` to install the dependencies
-3. [Optional] You can download the SRS to package it with the app binary and avoid fetching it from the server every time you generate a proof. Please refer to the section below on SRS download strategies.
+## How does it work?
 
-## Setup on iOS (abandoned)
+We assume that each player has a secret state, whether this be traps, hidden rogues or cards within your hand, there is a part of the game-state this is hidden and one that is public.
+On each turn, we need to exchange the public information, while at the same time, proving that the public information we exchange is correct.
+SKPL uses an event based system for this. Basically, all public game state updates happen via events and the Noir circuit proves, that the events received are actually valid.
 
-1. Run `npx pod-install` to install the pods for the iOS project
-2. Open the project in Xcode
-3. Make sure you see the `Swoir`, `SwoirCore` and `Swoirenberg` libraries in the `Package Dependencies` (if not please open an issue)
-4. Make sure you have a valid provisioning profile set up for the app in `Signing & Capabilities`
-5. Build & Run the app on your device
+### Basic data structures:
 
-## Setup on Android
+The game engine differentiates between 6 basic data types:
+* Character: These are player controllable entities, that take turns to act.
+* Obstacle: These are static objects created by the current player.
+* ActionDefinition: These describe workflows that each Character can trigger.
+* Action: These are commands at the game engine, they select a Character, an ActionDefinition and arguments for the action definition.
+* Object: These are both Obstacles and Characters of the opponent, we only know their position (if we found them) and their type.
+* Event: This is the driving factor of the engine: Private Actions using private ActionDefinitions yield Events, which are then publicly sent to the opponent.
 
-1. Connect your Android device and check it is connected by running `npm run android-devices`. It should display the connected device as `device` in the list of devices attached.
-2. Run `npm run android` to build and run the app on your device
+Of all of these, only Objects and Events are public, the rest is private.
 
-**Note**: If you want to do a clean build, you can run `./scripts/clean-android.sh` before running `npm run android`
+### Basic workflow:
 
-## SRS download strategies
+1. Verify that the player did not secretly change their private state between turns: There is a public hash of a secret + the private state of the end of the last turn. The engine verifies that this state did not change.
+2. Apply the opponent's Events to the own Characters and Obstacles.
+3. Iterate over all Actions to generate Events and update the private game state.
+4. Generate Objects off of all visible Obstacles and Characters.
+5. Generate a hash over the new private state.
+6. Validate that the provided public result state matches the calculated result state.
 
-The Structured Reference String (or SRS) contains the necessary data from the Universal Trusted Setup of Aztec to generate proofs with Noir (or more precisely the Barretenberg backend). So you will need it in the app. Here's how to go about it:
+### How to use:
 
-### You have 5 minutes and already know the circuits you want to use
+First you might want to adapt the default settings for the number of Characters, Obstacles, ActionDefinitions/Character and Actions/Turn:
+All game-specific constants are currently stored in /circuits/arenalib/src/lib.nr (subject to change)
+Adapt:
+MAX_CHARACTERS: Number of Characters per player
+MAX_OBSTACLES: Number of Obstacles per player
+MAX_ACTIONS_PER_CHARACTER: Number of ActionDefinitions per player IN ADDITION to the default WAIT action (which is simply required)
+WIDTH_BITS: Map width in bits
+WIDTH: Map width (limited by 2 ^ WIDTH_BITS)
+HEIGHT_BITS: Map height in bits
+HEIGHT: Map height (limited by 2 ^ HEIGHT_BITS)
+MAX_ACTIONS: Max number of actions per round per player
 
-Then you should pre-download the SRS and package it with the app binary. You can do so by running the script `./scripts/download-srs.sh` that will help you do that in a single command. First, you will need to identify which of your circuits has the highest gate count, that is which one of them returns the biggest `Backend Circuit Size` when running `nargo info`. Once you have identified that said circuit, run the following command:
+Then create your ActionDefinitions:
+Use the /circuits/arenalib/src/character.nr file as template on how to create your own actions (already serialized and ready to use!)
 
-```bash
-./scripts/download-srs.sh path/to/your/circuit/target/<your_circuit_name>.json
+Then, run
+```
+npm i
+npm run generate
 ```
 
-This will download the SRS and package it into the app binary, and you'll be ready to go!
+in either of the two template applications to update the compiled circuits!
 
-**Why do I need to know the circuit with the highest gate count?**
-The SRS is the same for all circuits, so you only need to download it once. But you only need a fraction of it according to the size of the circuit you are using. So instead of downloading the whole SRS, which is over 300MB, you can download the chunk of the SRS that is needed to prove the biggest circuit you plan to use. This way you will have a much smaller SRS file to store (likely less than 50MB).
+In you game you will want to have two phases (whether you display the setup phase in the UI, or simply setup things directly is up to you)
 
-**Note**: You can still download the SRS without specifying a circuit, just run `./scripts/download-srs.sh` without any argument. This will download the fraction of the SRS needed for a circuit of up to 512k constraints, which should be enough in most cases.
+Setup Phase
 
-### You don't know which circuits you will use for now and just want to try things out
+First you need dummy events from a fictional opponent to get the circuit started (there is no actual turn before this one, so you need dummy values)
+In case you kept the default values and ActionDefinitions, you can use the default serialized values to get started (as provided in the samples):
 
-Then you can skip the process described above and the app will revert to fetching the SRS from Aztec's server. This is the default strategy used in the app. This approach will slow down the proof generation process, especially if you have a slow network connection. Also it is not recommended for production as you should not expect users to have a fast connection at all times and this may severely impact their data plan without them realizing it.
-
-### You tried with the script but it didn't work
-
-You could try opening an issue if that's the case. But, the easier option is to download the SRS from [here](https://drive.google.com/file/d/1Vs0rEhpzN_ZYxKaEtuvX4RUvUcGwVQm1/view?usp=drive_link) and place it manually in the `ios` folder and the `android/app/src/main/res/raw/` folder. This SRS chunk is enough for a circuit of up to 512k constraints, which should be enough for most use cases.
-
-## Usage
-
-### Setup the circuit
-
-Import your compiled circuit, the json file generated by `nargo compile`, as a regular json file in TypeScript on whichever page you want to use it.
-
-```typescript
-import circuit from './path/to/your/circuit/target/<your_circuit_name>.json';
 ```
 
-Then before generating your first proof with it, make sure to setup the circuit by calling the `setupCircuit` function passing it the imported compiled circuit.
+const initial_my_chars_input = "0x2912640000004b03190000006c04142000008a0464000000aa47640b340a"; // this you will usually read from NFTs
+const initial_enemy_events = ["0x04ffff0000000004ffff0000000004ffff0000000004ffff000000000000"]; // dummy default values
+const initial_my_char_actions = ["0x03f00001300314002000000000100300000020000000002000000000000000", "0x02f0000110071020100a000020100a00000020000000002000000000000000", "0x02f0000a3b1901002000000000000801000020000000002000000000000000", "0x023100081b161118120a010018120a01000020000000002000000000000000", "0xf0003f000001002000000000200000000020000000002000000000000000", "0xf0003f000001002000000000200000000020000000002000000000000000", "0x03f00001300414002000000000100300000020000000002000000000000000", "0x02f0000110071008100a000008100a00000020000000002000000000000000", "0xf0003f1b1c11002000000000000702000020000000002000000000000000", "0xff003f1b1c1100200e013f00000e013f0020000000002000000000000000", "0xf0003f000001002000000000200000000020000000002000000000000000", "0xf0003f000001002000000000200000000020000000002000000000000000", "0x03f00001300314002000000000100300000020000000002000000000000000", "0x02f0000110071018100a000018100a00000020000000002000000000000000", "0x09f0000130060c002000000000200000000020000000002000000000000000", "0xf00001100610001005000100100500010020000000002000000000000000", "0xf00001301c0100100d000000100d00000020000000002000000000000000", "0x0bf00001100c00002000000000200000000010040a00002000000000000000", "0x03f00001300414002000000000100300000020000000002000000000000000", "0x02f0000110061028100a000028100a00000020000000002000000000000000", "0xf0003f000001002000000000200000000020000000002000000000000000", "0xf0003f000001002000000000200000000020000000002000000000000000", "0xf0003f000001002000000000200000000020000000002000000000000000", "0xf0003f000001002000000000200000000020000000002000000000000000", "0x03f00001300414002000000000100300000020000000002000000000000000", "0x02f0000110071010100a000010100a00000020000000002000000000000000", "0xf000071b1611002000000000000705000020000000002000000000000000", "0x6300061b161164150a020164150a02010020000000002000000000000000", "0xf0003f000001002000000000200000000020000000002000000000000000", "0xf0003f000001002000000000200000000020000000002000000000000000"]; // the serialized default ActionDefinitions
+const WALL = "0x06";  // Default non-traversible obstacle
+const WATER = "0x07"; // Default traversible obstacle
+const initial_enemy_advance = "0x00";
+const initial_enemy_objects = ["0x00", "0x00", "0x00", "0x00"]; // assuming that at the beginning all opponent objects are out of sight
 
-```typescript
-import {Circuit} from '../types';
-import {setupCircuit} from '../lib/noir';
-
-const circuitId: string = await setupCircuit(circuit as Circuit);
+const enemy_events = initial_enemy_events;
+const enemy_objects = initial_enemy_objects;
+const enemy_advance = initial_enemy_advance;
 ```
 
-It will return the `circuitId` (essentially the hash of the circuit), that identifies the circuit and which you will need to pass to the `generateProof` and `verifyProof` functions. You can keep it in a state variable or the context to use it later.
+Then you will need to deserialize some of these:
+```
+const [enemy_events_parsed_valid, enemy_events_parsed] = await skpl.parse_their_events(enemy_events);
+const [theirObjectsValid, theirObjects] = await skpl.parse_their_obstacles(enemy_objects);
+const [my_chars_valid, my_chars] = await skpl.parse_characters(initial_my_chars_input, initial_my_char_actions, enemy_events_parsed, "0x00");
 
-When you are done with the circuit, you can discard it by calling the `clearCircuit` function passing it the `circuitId`.
-
-```typescript
-import {clearCircuit} from '../lib/noir';
-
-await clearCircuit(circuitId);
 ```
 
-### Proving
+Next, you will have to place you Characters and create your Obstacles (assuming you did not deactivate them):
 
-To generate a proof, call the `generateProof` function passing it the `circuitId` and the inputs. Most type of inputs are supported such as integer, field, arrays and struct. The function will return the proof with the public inputs. The verification key of the circuit (needed for verification) needs to be generated separatly.
+```
+// usually, you will want to offer either pre-made maps or let the player place them freely
+const obstacleData = [
+  { id: "0x00", x: "0x00", y: "0x02", health: 200, type: WALL }, { id: "0x01", x: "0x01", y: "0x02", health: 200, type: WALL },
+  { id: "0x02", x: "0x03", y: "0x02", health: 200, type: WALL }, { id: "0x03", x: "0x04", y: "0x02", health: 200, type: WALL },
+  { id: "0x04", x: "0x05", y: "0x03", health: 200, type: WALL }, { id: "0x05", x: "0x05", y: "0x04", health: 200, type: WALL },
+  { id: "0x06", x: "0x05", y: "0x05", health: 200, type: WALL }, { id: "0x07", x: "0x05", y: "0x07", health: 200, type: WALL },
+  { id: "0x08", x: "0x04", y: "0x07", health: 200, type: WALL }, { id: "0x09", x: "0x03", y: "0x07", health: 200, type: WALL },
+  { id: "0x0a", x: "0x01", y: "0x07", health: 200, type: WALL }, { id: "0x0b", x: "0x00", y: "0x07", health: 200, type: WALL },
+  { id: "0x0c", x: "0x07", y: "0x00", health: 200, type: WALL }, { id: "0x0d", x: "0x07", y: "0x01", health: 200, type: WALL },
+  { id: "0x0e", x: "0x07", y: "0x02", health: 200, type: WALL }, { id: "0x0f", x: "0x07", y: "0x03", health: 200, type: WALL },
+  { id: "0x10", x: "0x07", y: "0x04", health: 200, type: WALL }, { id: "0x11", x: "0x07", y: "0x05", health: 200, type: WALL },
+  { id: "0x12", x: "0x06", y: "0x08", health: 255, type: WATER }, { id: "0x13", x: "0x07", y: "0x08", health: 255, type: WATER },
+  { id: "0x14", x: "0x05", y: "0x09", health: 255, type: WATER }, { id: "0x15", x: "0x06", y: "0x09", health: 255, type: WATER },
+  { id: "0x16", x: "0x07", y: "0x09", health: 255, type: WATER }, { id: "0x17", x: "0x08", y: "0x09", health: 255, type: WATER },
+];
+const myObstaclesParsedResults = await Promise.all(obstacleData.map(data => {
+  const x = skpl.new_obstacle(data.id, data.x, data.y, toHex(data.health), data.type);
+  return x;
+}));
+if (!myObstaclesParsedResults.every(r => r[0])) throw new Error("Failed to create obstacles!");
+let myObstacles = myObstaclesParsedResults.map(r => r[1]);
+```
 
-```typescript
-import {generateProof} from '../lib/noir';
+Game Phase
 
-const {proofWithPublicInputs} = await generateProof(
-  {
-    a: 5,
-    b: 7,
-    result: 35,
-  },
-  circuitId,
+Now, you can start playing in turns - for the first turn, you already handled the opponents events - for follow-up turns, you will start by first deserializing your opponents Events and Objects and then your own Characters, using your opponents Events.
+
+Then you can start asking your player for Actions, whereby you will always first want to get the actually available actions first!
+For this, you need to first render your own Characters as Objects and feed them together with your Obstacles to the skpl.get_performable_action function:
+```
+const myCharsAsObjectsResult = await skpl.chars_to_obstacles(my_chars_for_calc);
+if (!myCharsAsObjectsResult[0]) throw new Error("Failed to serialize my characters as objects");
+
+const myObjects = myObstacles.map(x=>x);
+myObjects.push(...myCharsAsObjectsResult[1]);
+const performableActions = await skpl.get_performable_actions(my_chars_for_calc[actor_id], initial_enemy_advance, toHex(energyLeft), myObjects, theirObjects);
+```
+
+As you can see in the above sample, you also need to track "Energy": This is similar to action points and similar mechanics:
+Basically, each action has a defined cost in energy. Each player gets 12 energy per turn allowing for a variable number of actions (up to MAX_ACTIONS).
+
+Once you get player input, you can create an action:
+```
+// Sample Action:
+// type 1 means first custom ActionDefinition of the Character
+// actor_id needs to refer to the active Character
+// 10 & 2 are the target coordinates where to execute the Action
+const action = await new_action(toHex(1), toHex(actor_id), toHex(10), toHex(2));
+```
+
+Then you can update your temporary local state, by executing the action:
+```
+const [actionCalcValid, myCharsUpdated, myObstaclesUpdated, energyLeft, resultEvent] =
+    await skpl.calculate_action(action, my_chars_for_calc, myObstacles, theirObjects, enemy_advance, toHex(energyLeft));
+```
+
+The resultEvent is here mostly for the UI so you can display effects.
+
+Once all Actions have been defined, you can start with the proof generation.
+For this, you will first need to serialize your inputs:
+```
+const [my_chars_input_serialized_valid, my_chars_input_serialized] = await skpl.serialize_chars(my_chars);
+const [my_obstacles_input_serialized_valid, my_obstacles_input_serialized] = await skpl.serialize_my_obstacles_for_me(myObstacles);
+
+```
+
+Action serialization is a little tricky, as you can have a varying number of them, but Noir requires fixed size arrays for proof inputs.
+One option is to use different functions for each possible number of actions like in the arenalib sample:
+```
+const serializeActions = async (actions: Action[]) => {
+  if (actions.length === 4) {
+    return arenalib.serialize_actions_4(toHex(actor_id), actions);
+  }
+  if (actions.length === 3) {
+    return arenalib.serialize_actions_3(toHex(actor_id), actions);
+  }
+  if (actions.length === 2) {
+    return arenalib.serialize_actions_2(toHex(actor_id), actions);
+  }
+  if (actions.length === 1) {
+    return arenalib.serialize_actions_1(toHex(actor_id), actions[0]);
+  }
+  if (actions.length === 0) {
+    return arenalib.serialize_actions_0(toHex(actor_id));
+  }
+  throw new Error(`invalid action number ${actions.length}`);
+}
+const actions_input_serialized = await serializeActions(actions);
+```
+
+Then you can calculate the turn results (which **should** match the results you got from calling skpl.calculate_action):
+```
+const [
+  calculate_turn_valid,
+  my_result_chars_serialized,
+  my_result_char_actions_serialized,
+  my_result_obstacles,
+  my_result_advance,
+  my_result_events_serialized,
+  my_result_objects_serialized
+] = await skpl.calculate_turn(
+  my_chars_input_serialized,
+  my_char_actions_input_serialized,
+  my_obstacles_input_serialized,
+  actions_input_serialized,
+  toHex(move),
+  initial_enemy_advance,
+  initial_enemy_objects,
+  initial_enemy_events
 );
 ```
 
-### Remove the public inputs from the proof
-
-If you want only the proof, stripped of its public inputs, you can call the `extractProof` function passing it the proof with public inputs and the circuit. It will return just the proof.
-
-```typescript
-import circuit from './path/to/your/circuit/target/<your_circuit_name>.json';
-import {Circuit} from '../types';
-import {extractProof} from '../lib/noir';
-
-const proof = extractProof(circuit as Circuit, proofWithPublicInputs);
+To generate the proof, you will also need to serialize those result obstacles:
+```
+const my_result_obstacles_serialized = await skpl.serialize_my_obstacles_for_me(my_result_obstacles);
 ```
 
-### Verifying
-
-To verify a proof, call the `verifyProof` function passing it the `circuitId`, the proof and the verification key. It will return a boolean indicating if the proof is valid or not.
-
-```typescript
-import {verifyProof} from '../lib/noir';
-
-const isValid = await verifyProof(proofWithPublicInputs, vkey, circuitId);
+In the first turn, you need to generate two hashes - in follow-up turns, you can re-use the last turns gamestate_after_hash as you gamestate_before_hash:
+```
+const initial_hash = await skpl.hash_serialized_private_state(my_chars_input_serialized, my_char_actions_input_serialized, my_obstacles_input_serialized, secret);
+const result_hash = await skpl.hash_serialized_private_state(my_result_chars_serialized, my_result_char_actions_serialized, my_result_obstacles_serialized, secret);
 ```
 
-**Note**: You can look at the different pages in the `pages` folder to see how it is used in the app more concretely.
+With all the data ready, you can create the actual proof - which atm is still slightly more complicated as you cannot use noir-codegen functions:
+Thus you still need to load the circuit in a separate iframe and then execute it.
+If you use the webapp template, you can reuse the prover.js iframe:
 
-## How to replace the circuit
+```
+const proofArgs = {
+    secret,
+    my_chars_input: my_chars_input_serialized,
+    my_char_actions: my_char_actions_input_serialized,
+    my_obstacles_input: my_obstacles_input_serialized,
+    actions: actions_input_serialized,
+    move,
+    enemy_advance: initial_enemy_advance,
+    enemy_objects: initial_enemy_objects,
+    enemy_events: initial_enemy_events, // Pass the initial string array format expected by the circuit
+    my_result_advance,
+    my_result_events: my_result_events_serialized,
+    my_result_objects: my_result_objects_serialized,
+    gamestate_before_hash: initial_hash,
+    gamestate_after_hash: result_hash,
+};
+iframeRef.current.contentWindow.postMessage({
+  type: 'generateProof',
+  payload: {
+    // Pass the actual circuit JSON for the proof circuit
+    circuitJson: circuitProof as Circuit, // Pass the imported JSON
+    inputs: proofArgs,
+    abi: circuitProof.abi as Circuit["abi"] // Pass the ABI needed by iframe's serializeArguments
+  }
+}, '*');
+```
 
-This app comes with a basic Noir circuit checking that the prover knows two private inputs `a` and `b` such that the public input `result` is equal to their product `a * b`, a circuit verifying a secp256r1 signature and one doing multiple rounds of pedersen hashing. You can replace any of these circuits with your own by following these steps:
+Then you can send:
+move, my_result_advance, my_result_events, my_result_objects, initial_hash and result_hash together with the proof to your opponent (either via webRTC or by pushing on a blockchain).
 
-1. Go into the `circuits` folder
-2. Create a new folder for your circuit such as `my_circuit`
-3. Create a `Nargo.toml` file in this folder following the structure of the `Nargo.toml` file in the other subfolders of the `circuits` folder. Don't forget to change the name of the circuit in the `name` field
-4. Create a `src` folder and create a `main.nr` file in it
-5. Make sure you have the version 1.0.0-beta.3 of `nargo`. You can check by running `nargo --version`. If you have a different version, you can use `noirup -v 1.0.0-beta.3`. And if you don't have `noirup` follow the instructions [here](https://noir-lang.org/docs/getting_started/installation/).
-6. Write your Noir code in `main.nr` and run `nargo check` to generate the `Prover.toml` and `Verifier.toml` files
-7. Run `nargo compile` to compile the circuit
-8. It will generate a new `<your_circuit_name>.json` file in `/target`
-9. You can then replace the import in the Javascript code to load this circuit instead
 
-## Note on performance
+## NOTE
 
-Bear in mind that mobile phones have a limited amount of available RAM. The circuit used in this app is really simple so the memory usage is not a problem. However, if you plan to use more complex circuits, you should be aware that the memory usage will increase and may go above the available memory on the device causing the proof generation to fail.
-
-## A note on Honk vs Plonk
-
-Honk is the most recent proof system developed by Aztec and is faster and less memory intensive than UltraPlonk. It is now becoming more mature and Plonk is expected to be deprecated in the near future from Aztec's backend (Barretenberg). Therefore, UltraPlonk suppport has been removed from the app.
-
-## Latest supported version of Noir
-
-The latest supported version of Noir is 1.0.0-beta.3 with Barretenberg 0.76.4 as backend.
+This is an in active development pre-alpha version, so there is still a lot that will change!

@@ -205,7 +205,7 @@ pub fn get_obstacle_type(obstacle: Obstacle) -> u8 {
 
 #[export]
 pub fn new_obstacle(id: u8, x: u8, y: u8, health: u8, obstacle_type: u8) -> pub (bool, Obstacle) {
-  let valid = ((x < WIDTH) | (x == NOWHERE)) & ((y < HEIGHT) | (y == NOWHERE)) & (health <= MAX_HEALTH) & (obstacle_type <= MAX_OBSTACLE_TYPE);
+  let valid = ((x < WIDTH) | (x == NOWHERE)) & ((y < HEIGHT) | (y == NOWHERE)) & (health <= MAX_HEALTH) & (obstacle_type <= MAX_OBSTACLE_TYPE) & (id as u32 < (MAX_OBSTACLES + MAX_CHARACTERS));
     // let mut valid = true;
     // softassert!(quote { valid }, quote { (x < WIDTH) | (x == NOWHERE) }, quote { f"Cannot create Obstacle: Invalid x: {x} >= {WIDTH}" });
     // softassert!(quote { valid }, quote { (y < HEIGHT) | (y == NOWHERE) }, quote { f"Cannot create Obstacle: Invalid y: {y} >= {HEIGHT}" });
@@ -341,6 +341,7 @@ pub fn is_obstacle_valid(obstacle: Obstacle) -> bool {
     (get_obstacle_x(obstacle) < WIDTH) & (get_obstacle_y(obstacle) < HEIGHT)
 }
 
+#[export]
 pub fn parse_their_obstacles(serialized_obstacles: SerializedArenaEnemyObstacles) -> (bool, [Obstacle; MAX_ENEMY_OBSTACLES]) {
   let (dummy_obstacle_valid, dummy_obstacle) = new_obstacle(0, NOWHERE, NOWHERE, 255, 0);
   assert(dummy_obstacle_valid);

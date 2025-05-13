@@ -1,0 +1,495 @@
+<?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg version="1.1" width="1200" height="190" onload="init(evt)" viewBox="0 0 1200 190" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:fg="http://github.com/jonhoo/inferno"><!--Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples.--><!--NOTES: --><defs><linearGradient id="background" y1="0" y2="1" x1="0" x2="0"><stop stop-color="#eeeeee" offset="5%"/><stop stop-color="#eeeeb0" offset="95%"/></linearGradient></defs><style type="text/css">
+text { font-family:monospace; font-size:12px }
+#title { text-anchor:middle; font-size:17px; }
+#matched { text-anchor:end; }
+#search { text-anchor:end; opacity:0.1; cursor:pointer; }
+#search:hover, #search.show { opacity:1; }
+#subtitle { text-anchor:middle; font-color:rgb(160,160,160); }
+#unzoom { cursor:pointer; }
+#frames > *:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+.hide { display:none; }
+.parent { opacity:0.5; }
+</style><script type="text/ecmascript"><![CDATA[
+        var nametype = 'Function:';
+        var fontsize = 12;
+        var fontwidth = 0.59;
+        var xpad = 10;
+        var inverted = false;
+        var searchcolor = 'rgb(230,0,230)';
+        var fluiddrawing = true;
+        var truncate_text_right = true;
+    ]]><![CDATA["use strict";
+var details, searchbtn, unzoombtn, matchedtxt, svg, searching, frames, known_font_width;
+function init(evt) {
+    details = document.getElementById("details").firstChild;
+    searchbtn = document.getElementById("search");
+    unzoombtn = document.getElementById("unzoom");
+    matchedtxt = document.getElementById("matched");
+    svg = document.getElementsByTagName("svg")[0];
+    frames = document.getElementById("frames");
+    known_font_width = get_monospace_width(frames);
+    total_samples = parseInt(frames.attributes.total_samples.value);
+    searching = 0;
+
+    // Use GET parameters to restore a flamegraph's state.
+    var restore_state = function() {
+        var params = get_params();
+        if (params.x && params.y)
+            zoom(find_group(document.querySelector('[*|x="' + params.x + '"][y="' + params.y + '"]')));
+        if (params.s)
+            search(params.s);
+    };
+
+    if (fluiddrawing) {
+        // Make width dynamic so the SVG fits its parent's width.
+        svg.removeAttribute("width");
+        // Edge requires us to have a viewBox that gets updated with size changes.
+        var isEdge = /Edge\/\d./i.test(navigator.userAgent);
+        if (!isEdge) {
+            svg.removeAttribute("viewBox");
+        }
+        var update_for_width_change = function() {
+            if (isEdge) {
+                svg.attributes.viewBox.value = "0 0 " + svg.width.baseVal.value + " " + svg.height.baseVal.value;
+            }
+
+            // Keep consistent padding on left and right of frames container.
+            frames.attributes.width.value = svg.width.baseVal.value - xpad * 2;
+
+            // Text truncation needs to be adjusted for the current width.
+            update_text_for_elements(frames.children);
+
+            // Keep search elements at a fixed distance from right edge.
+            var svgWidth = svg.width.baseVal.value;
+            searchbtn.attributes.x.value = svgWidth - xpad;
+            matchedtxt.attributes.x.value = svgWidth - xpad;
+        };
+        window.addEventListener('resize', function() {
+            update_for_width_change();
+        });
+        // This needs to be done asynchronously for Safari to work.
+        setTimeout(function() {
+            unzoom();
+            update_for_width_change();
+            restore_state();
+        }, 0);
+    } else {
+        restore_state();
+    }
+}
+// event listeners
+window.addEventListener("click", function(e) {
+    var target = find_group(e.target);
+    if (target) {
+        if (target.nodeName == "a") {
+            if (e.ctrlKey === false) return;
+            e.preventDefault();
+        }
+        if (target.classList.contains("parent")) unzoom();
+        zoom(target);
+
+        // set parameters for zoom state
+        var el = target.querySelector("rect");
+        if (el && el.attributes && el.attributes.y && el.attributes["fg:x"]) {
+            var params = get_params()
+            params.x = el.attributes["fg:x"].value;
+            params.y = el.attributes.y.value;
+            history.replaceState(null, null, parse_params(params));
+        }
+    }
+    else if (e.target.id == "unzoom") {
+        unzoom();
+
+        // remove zoom state
+        var params = get_params();
+        if (params.x) delete params.x;
+        if (params.y) delete params.y;
+        history.replaceState(null, null, parse_params(params));
+    }
+    else if (e.target.id == "search") search_prompt();
+}, false)
+// mouse-over for info
+// show
+window.addEventListener("mouseover", function(e) {
+    var target = find_group(e.target);
+    if (target) details.nodeValue = nametype + " " + g_to_text(target);
+}, false)
+// clear
+window.addEventListener("mouseout", function(e) {
+    var target = find_group(e.target);
+    if (target) details.nodeValue = ' ';
+}, false)
+// ctrl-F for search
+window.addEventListener("keydown",function (e) {
+    if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+        e.preventDefault();
+        search_prompt();
+    }
+}, false)
+// functions
+function get_params() {
+    var params = {};
+    var paramsarr = window.location.search.substr(1).split('&');
+    for (var i = 0; i < paramsarr.length; ++i) {
+        var tmp = paramsarr[i].split("=");
+        if (!tmp[0] || !tmp[1]) continue;
+        params[tmp[0]]  = decodeURIComponent(tmp[1]);
+    }
+    return params;
+}
+function parse_params(params) {
+    var uri = "?";
+    for (var key in params) {
+        uri += key + '=' + encodeURIComponent(params[key]) + '&';
+    }
+    if (uri.slice(-1) == "&")
+        uri = uri.substring(0, uri.length - 1);
+    if (uri == '?')
+        uri = window.location.href.split('?')[0];
+    return uri;
+}
+function find_child(node, selector) {
+    var children = node.querySelectorAll(selector);
+    if (children.length) return children[0];
+    return;
+}
+function find_group(node) {
+    var parent = node.parentElement;
+    if (!parent) return;
+    if (parent.id == "frames") return node;
+    return find_group(parent);
+}
+function orig_save(e, attr, val) {
+    if (e.attributes["fg:orig_" + attr] != undefined) return;
+    if (e.attributes[attr] == undefined) return;
+    if (val == undefined) val = e.attributes[attr].value;
+    e.setAttribute("fg:orig_" + attr, val);
+}
+function orig_load(e, attr) {
+    if (e.attributes["fg:orig_"+attr] == undefined) return;
+    e.attributes[attr].value = e.attributes["fg:orig_" + attr].value;
+    e.removeAttribute("fg:orig_" + attr);
+}
+function g_to_text(e) {
+    var text = find_child(e, "title").firstChild.nodeValue;
+    return (text)
+}
+function g_to_func(e) {
+    var func = g_to_text(e);
+    // if there's any manipulation we want to do to the function
+    // name before it's searched, do it here before returning.
+    return (func);
+}
+function get_monospace_width(frames) {
+    // Given the id="frames" element, return the width of text characters if
+    // this is a monospace font, otherwise return 0.
+    text = find_child(frames.children[0], "text");
+    originalContent = text.textContent;
+    text.textContent = "!";
+    bangWidth = text.getComputedTextLength();
+    text.textContent = "W";
+    wWidth = text.getComputedTextLength();
+    text.textContent = originalContent;
+    if (bangWidth === wWidth) {
+        return bangWidth;
+    } else {
+        return 0;
+    }
+}
+function update_text_for_elements(elements) {
+    // In order to render quickly in the browser, you want to do one pass of
+    // reading attributes, and one pass of mutating attributes. See
+    // https://web.dev/avoid-large-complex-layouts-and-layout-thrashing/ for details.
+
+    // Fall back to inefficient calculation, if we're variable-width font.
+    // TODO This should be optimized somehow too.
+    if (known_font_width === 0) {
+        for (var i = 0; i < elements.length; i++) {
+            update_text(elements[i]);
+        }
+        return;
+    }
+
+    var textElemNewAttributes = [];
+    for (var i = 0; i < elements.length; i++) {
+        var e = elements[i];
+        var r = find_child(e, "rect");
+        var t = find_child(e, "text");
+        var w = parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 - 3;
+        var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+        var newX = format_percent((parseFloat(r.attributes.x.value) + (100 * 3 / frames.attributes.width.value)));
+
+        // Smaller than this size won't fit anything
+        if (w < 2 * known_font_width) {
+            textElemNewAttributes.push([newX, ""]);
+            continue;
+        }
+
+        // Fit in full text width
+        if (txt.length * known_font_width < w) {
+            textElemNewAttributes.push([newX, txt]);
+            continue;
+        }
+
+        var substringLength = Math.floor(w / known_font_width) - 2;
+        if (truncate_text_right) {
+            // Truncate the right side of the text.
+            textElemNewAttributes.push([newX, txt.substring(0, substringLength) + ".."]);
+            continue;
+        } else {
+            // Truncate the left side of the text.
+            textElemNewAttributes.push([newX, ".." + txt.substring(txt.length - substringLength, txt.length)]);
+            continue;
+        }
+    }
+
+    console.assert(textElemNewAttributes.length === elements.length, "Resize failed, please file a bug at https://github.com/jonhoo/inferno/");
+
+    // Now that we know new textContent, set it all in one go so we don't refresh a bazillion times.
+    for (var i = 0; i < elements.length; i++) {
+        var e = elements[i];
+        var values = textElemNewAttributes[i];
+        var t = find_child(e, "text");
+        t.attributes.x.value = values[0];
+        t.textContent = values[1];
+    }
+}
+
+function update_text(e) {
+    var r = find_child(e, "rect");
+    var t = find_child(e, "text");
+    var w = parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 - 3;
+    var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+    t.attributes.x.value = format_percent((parseFloat(r.attributes.x.value) + (100 * 3 / frames.attributes.width.value)));
+
+    // Smaller than this size won't fit anything
+    if (w < 2 * fontsize * fontwidth) {
+        t.textContent = "";
+        return;
+    }
+    t.textContent = txt;
+    // Fit in full text width
+    if (t.getComputedTextLength() < w)
+        return;
+    if (truncate_text_right) {
+        // Truncate the right side of the text.
+        for (var x = txt.length - 2; x > 0; x--) {
+            if (t.getSubStringLength(0, x + 2) <= w) {
+                t.textContent = txt.substring(0, x) + "..";
+                return;
+            }
+        }
+    } else {
+        // Truncate the left side of the text.
+        for (var x = 2; x < txt.length; x++) {
+            if (t.getSubStringLength(x - 2, txt.length) <= w) {
+                t.textContent = ".." + txt.substring(x, txt.length);
+                return;
+            }
+        }
+    }
+    t.textContent = "";
+}
+// zoom
+function zoom_reset(e) {
+    if (e.tagName == "rect") {
+        e.attributes.x.value = format_percent(100 * parseInt(e.attributes["fg:x"].value) / total_samples);
+        e.attributes.width.value = format_percent(100 * parseInt(e.attributes["fg:w"].value) / total_samples);
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_reset(c[i]);
+    }
+}
+function zoom_child(e, x, zoomed_width_samples) {
+    if (e.tagName == "text") {
+        var parent_x = parseFloat(find_child(e.parentNode, "rect[x]").attributes.x.value);
+        e.attributes.x.value = format_percent(parent_x + (100 * 3 / frames.attributes.width.value));
+    } else if (e.tagName == "rect") {
+        e.attributes.x.value = format_percent(100 * (parseInt(e.attributes["fg:x"].value) - x) / zoomed_width_samples);
+        e.attributes.width.value = format_percent(100 * parseInt(e.attributes["fg:w"].value) / zoomed_width_samples);
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_child(c[i], x, zoomed_width_samples);
+    }
+}
+function zoom_parent(e) {
+    if (e.attributes) {
+        if (e.attributes.x != undefined) {
+            e.attributes.x.value = "0.0%";
+        }
+        if (e.attributes.width != undefined) {
+            e.attributes.width.value = "100.0%";
+        }
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_parent(c[i]);
+    }
+}
+function zoom(node) {
+    var attr = find_child(node, "rect").attributes;
+    var width = parseInt(attr["fg:w"].value);
+    var xmin = parseInt(attr["fg:x"].value);
+    var xmax = xmin + width;
+    var ymin = parseFloat(attr.y.value);
+    unzoombtn.classList.remove("hide");
+    var el = frames.children;
+    var to_update_text = [];
+    for (var i = 0; i < el.length; i++) {
+        var e = el[i];
+        var a = find_child(e, "rect").attributes;
+        var ex = parseInt(a["fg:x"].value);
+        var ew = parseInt(a["fg:w"].value);
+        // Is it an ancestor
+        if (!inverted) {
+            var upstack = parseFloat(a.y.value) > ymin;
+        } else {
+            var upstack = parseFloat(a.y.value) < ymin;
+        }
+        if (upstack) {
+            // Direct ancestor
+            if (ex <= xmin && (ex+ew) >= xmax) {
+                e.classList.add("parent");
+                zoom_parent(e);
+                to_update_text.push(e);
+            }
+            // not in current path
+            else
+                e.classList.add("hide");
+        }
+        // Children maybe
+        else {
+            // no common path
+            if (ex < xmin || ex >= xmax) {
+                e.classList.add("hide");
+            }
+            else {
+                zoom_child(e, xmin, width);
+                to_update_text.push(e);
+            }
+        }
+    }
+    update_text_for_elements(to_update_text);
+}
+function unzoom() {
+    unzoombtn.classList.add("hide");
+    var el = frames.children;
+    for(var i = 0; i < el.length; i++) {
+        el[i].classList.remove("parent");
+        el[i].classList.remove("hide");
+        zoom_reset(el[i]);
+    }
+    update_text_for_elements(el);
+}
+// search
+function reset_search() {
+    var el = document.querySelectorAll("#frames rect");
+    for (var i = 0; i < el.length; i++) {
+        orig_load(el[i], "fill")
+    }
+    var params = get_params();
+    delete params.s;
+    history.replaceState(null, null, parse_params(params));
+}
+function search_prompt() {
+    if (!searching) {
+        var term = prompt("Enter a search term (regexp " +
+            "allowed, eg: ^ext4_)", "");
+        if (term != null) {
+            search(term)
+        }
+    } else {
+        reset_search();
+        searching = 0;
+        searchbtn.classList.remove("show");
+        searchbtn.firstChild.nodeValue = "Search"
+        matchedtxt.classList.add("hide");
+        matchedtxt.firstChild.nodeValue = ""
+    }
+}
+function search(term) {
+    var re = new RegExp(term);
+    var el = frames.children;
+    var matches = new Object();
+    var maxwidth = 0;
+    for (var i = 0; i < el.length; i++) {
+        var e = el[i];
+        // Skip over frames which are either not visible, or below the zoomed-to frame
+        if (e.classList.contains("hide") || e.classList.contains("parent")) {
+            continue;
+        }
+        var func = g_to_func(e);
+        var rect = find_child(e, "rect");
+        if (func == null || rect == null)
+            continue;
+        // Save max width. Only works as we have a root frame
+        var w = parseInt(rect.attributes["fg:w"].value);
+        if (w > maxwidth)
+            maxwidth = w;
+        if (func.match(re)) {
+            // highlight
+            var x = parseInt(rect.attributes["fg:x"].value);
+            orig_save(rect, "fill");
+            rect.attributes.fill.value = searchcolor;
+            // remember matches
+            if (matches[x] == undefined) {
+                matches[x] = w;
+            } else {
+                if (w > matches[x]) {
+                    // overwrite with parent
+                    matches[x] = w;
+                }
+            }
+            searching = 1;
+        }
+    }
+    if (!searching)
+        return;
+    var params = get_params();
+    params.s = term;
+    history.replaceState(null, null, parse_params(params));
+
+    searchbtn.classList.add("show");
+    searchbtn.firstChild.nodeValue = "Reset Search";
+    // calculate percent matched, excluding vertical overlap
+    var count = 0;
+    var lastx = -1;
+    var lastw = 0;
+    var keys = Array();
+    for (k in matches) {
+        if (matches.hasOwnProperty(k))
+            keys.push(k);
+    }
+    // sort the matched frames by their x location
+    // ascending, then width descending
+    keys.sort(function(a, b){
+        return a - b;
+    });
+    // Step through frames saving only the biggest bottom-up frames
+    // thanks to the sort order. This relies on the tree property
+    // where children are always smaller than their parents.
+    for (var k in keys) {
+        var x = parseInt(keys[k]);
+        var w = matches[keys[k]];
+        if (x >= lastx + lastw) {
+            count += w;
+            lastx = x;
+            lastw = w;
+        }
+    }
+    // display matched percent
+    matchedtxt.classList.remove("hide");
+    var pct = 100 * count / maxwidth;
+    if (pct != 100) pct = pct.toFixed(1);
+    matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+}
+function format_percent(n) {
+    return n.toFixed(4) + "%";
+}
+]]></script><rect x="0" y="0" width="100%" height="190" fill="url(#background)"/><text id="title" fill="rgb(0,0,0)" x="50.0000%" y="24.00">./export/get_performable_actions.json-get_performable_actions</text><text id="details" fill="rgb(0,0,0)" x="10" y="173.00"> </text><text id="unzoom" class="hide" fill="rgb(0,0,0)" x="10" y="24.00">Reset Zoom</text><text id="search" fill="rgb(0,0,0)" x="1190" y="24.00">Search</text><text id="matched" fill="rgb(0,0,0)" x="1190" y="173.00"> </text><svg id="frames" x="10" width="1180" total_samples="95764"><g><title>acir::arithmetic (2,240 gates, 2.34%)</title><rect x="0.0000%" y="109" width="2.3391%" height="23" fill="rgb(255,227,227)" fg:x="0" fg:w="2240"/><text x="0.2500%" y="123.50">a..</text></g><g><title>acir::blackbox::range (661 gates, 0.69%)</title><rect x="2.3391%" y="109" width="0.6902%" height="23" fill="rgb(255,237,237)" fg:x="2240" fg:w="661"/><text x="2.5891%" y="123.50"></text></g><g><title>acir::arithmetic (2 gates, 0.00%)</title><rect x="3.0293%" y="85" width="0.0021%" height="23" fill="rgb(255,249,249)" fg:x="2901" fg:w="2"/><text x="3.2793%" y="99.50"></text></g><g><title>action.nr:735:26::enemy_advance &gt;= WIDTH (4 gates, 0.00%)</title><rect x="3.0293%" y="109" width="0.0042%" height="23" fill="rgb(255,249,249)" fg:x="2901" fg:w="4"/><text x="3.2793%" y="123.50"></text></g><g><title>acir::blackbox::range (2 gates, 0.00%)</title><rect x="3.0314%" y="85" width="0.0021%" height="23" fill="rgb(255,249,249)" fg:x="2903" fg:w="2"/><text x="3.2814%" y="99.50"></text></g><g><title>acir::arithmetic (1 gates, 0.00%)</title><rect x="3.0335%" y="85" width="0.0010%" height="23" fill="rgb(255,249,249)" fg:x="2905" fg:w="1"/><text x="3.2835%" y="99.50"></text></g><g><title>action.nr:735:62::WIDTH - enemy_advance - 1 (3 gates, 0.00%)</title><rect x="3.0335%" y="109" width="0.0031%" height="23" fill="rgb(255,249,249)" fg:x="2905" fg:w="3"/><text x="3.2835%" y="123.50"></text></g><g><title>acir::blackbox::range (2 gates, 0.00%)</title><rect x="3.0345%" y="85" width="0.0021%" height="23" fill="rgb(255,249,249)" fg:x="2906" fg:w="2"/><text x="3.2845%" y="99.50"></text></g><g><title>acir::arithmetic (1 gates, 0.00%)</title><rect x="3.0366%" y="85" width="0.0010%" height="23" fill="rgb(255,249,249)" fg:x="2908" fg:w="1"/><text x="3.2866%" y="99.50"></text></g><g><title>action.nr:735:62::WIDTH - enemy_advance (2 gates, 0.00%)</title><rect x="3.0366%" y="109" width="0.0021%" height="23" fill="rgb(255,249,249)" fg:x="2908" fg:w="2"/><text x="3.2866%" y="123.50"></text></g><g><title>acir::blackbox::range (1 gates, 0.00%)</title><rect x="3.0377%" y="85" width="0.0010%" height="23" fill="rgb(255,249,249)" fg:x="2909" fg:w="1"/><text x="3.2877%" y="99.50"></text></g><g><title>action.nr:745:32::is_visible(enemy_advance, actor_x) (2 gates, 0.00%)</title><rect x="3.0387%" y="109" width="0.0021%" height="23" fill="rgb(255,249,249)" fg:x="2910" fg:w="2"/><text x="3.2887%" y="123.50"></text></g><g><title>map.nr:99:5::x &gt;= enemy_advance (2 gates, 0.00%)</title><rect x="3.0387%" y="85" width="0.0021%" height="23" fill="rgb(255,249,249)" fg:x="2910" fg:w="2"/><text x="3.2887%" y="99.50"></text></g><g><title>acir::blackbox::range (2 gates, 0.00%)</title><rect x="3.0387%" y="61" width="0.0021%" height="23" fill="rgb(255,249,249)" fg:x="2910" fg:w="2"/><text x="3.2887%" y="75.50"></text></g><g><title>acir::blackbox::range (400 gates, 0.42%)</title><rect x="3.0408%" y="61" width="0.4177%" height="23" fill="rgb(255,240,240)" fg:x="2912" fg:w="400"/><text x="3.2908%" y="75.50"></text></g><g><title>map.nr:231:22::_get_free_map(obstacles, their_obstacles) (403 gates, 0.42%)</title><rect x="3.0408%" y="85" width="0.4208%" height="23" fill="rgb(255,240,240)" fg:x="2912" fg:w="403"/><text x="3.2908%" y="99.50"></text></g><g><title>acir::memory::init (3 gates, 0.00%)</title><rect x="3.4585%" y="61" width="0.0031%" height="23" fill="rgb(255,249,249)" fg:x="3312" fg:w="3"/><text x="3.7085%" y="75.50"></text></g><g><title>obstacle.nr:259:69::get_obstacle_type(obstacle) == EMPTY (58 gates, 0.06%)</title><rect x="3.4616%" y="61" width="0.0606%" height="23" fill="rgb(255,246,246)" fg:x="3315" fg:w="58"/><text x="3.7116%" y="75.50"></text></g><g><title>acir::arithmetic (58 gates, 0.06%)</title><rect x="3.4616%" y="37" width="0.0606%" height="23" fill="rgb(255,246,246)" fg:x="3315" fg:w="58"/><text x="3.7116%" y="51.50"></text></g><g><title>acir::arithmetic (29 gates, 0.03%)</title><rect x="3.5222%" y="37" width="0.0303%" height="23" fill="rgb(255,247,247)" fg:x="3373" fg:w="29"/><text x="3.7722%" y="51.50"></text></g><g><title>map.nr:242:15::is_obstacle_traversible(obstacle) (159 gates, 0.17%)</title><rect x="3.4616%" y="85" width="0.1660%" height="23" fill="rgb(255,243,243)" fg:x="3315" fg:w="159"/><text x="3.7116%" y="99.50"></text></g><g><title>obstacle.nr:259:6::get_obstacle_type(obstacle) &gt;= NON_EMPTY_WALKABLE_TILE_MIN (101 gates, 0.11%)</title><rect x="3.5222%" y="61" width="0.1055%" height="23" fill="rgb(255,245,245)" fg:x="3373" fg:w="101"/><text x="3.7722%" y="75.50"></text></g><g><title>acir::blackbox::range (72 gates, 0.08%)</title><rect x="3.5525%" y="37" width="0.0752%" height="23" fill="rgb(255,245,245)" fg:x="3402" fg:w="72"/><text x="3.8025%" y="51.50"></text></g><g><title>acir::arithmetic (381 gates, 0.40%)</title><rect x="3.6277%" y="61" width="0.3979%" height="23" fill="rgb(255,240,240)" fg:x="3474" fg:w="381"/><text x="3.8777%" y="75.50"></text></g><g><title>acir::memory::init (3 gates, 0.00%)</title><rect x="4.0255%" y="61" width="0.0031%" height="23" fill="rgb(255,249,249)" fg:x="3855" fg:w="3"/><text x="4.2755%" y="75.50"></text></g><g><title>map.nr:243:20::map[x] (1,341 gates, 1.40%)</title><rect x="3.6277%" y="85" width="1.4003%" height="23" fill="rgb(255,232,232)" fg:x="3474" fg:w="1341"/><text x="3.8777%" y="99.50"></text></g><g><title>acir::memory::op (957 gates, 1.00%)</title><rect x="4.0287%" y="61" width="0.9993%" height="23" fill="rgb(255,235,235)" fg:x="3858" fg:w="957"/><text x="4.2787%" y="75.50"></text></g><g><title>acir::arithmetic (58 gates, 0.06%)</title><rect x="5.0280%" y="61" width="0.0606%" height="23" fill="rgb(255,246,246)" fg:x="4815" fg:w="58"/><text x="5.2780%" y="75.50"></text></g><g><title>map.nr:243:20::map[x][y] &gt; 0 (116 gates, 0.12%)</title><rect x="5.0280%" y="85" width="0.1211%" height="23" fill="rgb(255,244,244)" fg:x="4815" fg:w="116"/><text x="5.2780%" y="99.50"></text></g><g><title>acir::blackbox::range (58 gates, 0.06%)</title><rect x="5.0886%" y="61" width="0.0606%" height="23" fill="rgb(255,246,246)" fg:x="4873" fg:w="58"/><text x="5.3386%" y="75.50"></text></g><g><title>acir::arithmetic (29 gates, 0.03%)</title><rect x="5.1491%" y="61" width="0.0303%" height="23" fill="rgb(255,247,247)" fg:x="4931" fg:w="29"/><text x="5.3991%" y="75.50"></text></g><g><title>acir::memory::init (319 gates, 0.33%)</title><rect x="5.1794%" y="61" width="0.3331%" height="23" fill="rgb(255,241,241)" fg:x="4960" fg:w="319"/><text x="5.4294%" y="75.50"></text></g><g><title>map.nr:243:20::map[x][y] (667 gates, 0.70%)</title><rect x="5.1491%" y="85" width="0.6965%" height="23" fill="rgb(255,237,237)" fg:x="4931" fg:w="667"/><text x="5.3991%" y="99.50"></text></g><g><title>acir::memory::op (319 gates, 0.33%)</title><rect x="5.5125%" y="61" width="0.3331%" height="23" fill="rgb(255,241,241)" fg:x="5279" fg:w="319"/><text x="5.7625%" y="75.50"></text></g><g><title>obstacle.nr:259:69::get_obstacle_type(obstacle) == EMPTY (58 gates, 0.06%)</title><rect x="5.8456%" y="61" width="0.0606%" height="23" fill="rgb(255,246,246)" fg:x="5598" fg:w="58"/><text x="6.0956%" y="75.50"></text></g><g><title>acir::arithmetic (58 gates, 0.06%)</title><rect x="5.8456%" y="37" width="0.0606%" height="23" fill="rgb(255,246,246)" fg:x="5598" fg:w="58"/><text x="6.0956%" y="51.50"></text></g><g><title>acir::arithmetic (29 gates, 0.03%)</title><rect x="5.9062%" y="37" width="0.0303%" height="23" fill="rgb(255,247,247)" fg:x="5656" fg:w="29"/><text x="6.1562%" y="51.50"></text></g><g><title>map.nr:262:6::is_obstacle_traversible(obstacle) (160 gates, 0.17%)</title><rect x="5.8456%" y="85" width="0.1671%" height="23" fill="rgb(255,243,243)" fg:x="5598" fg:w="160"/><text x="6.0956%" y="99.50"></text></g><g><title>obstacle.nr:259:6::get_obstacle_type(obstacle) &gt;= NON_EMPTY_WALKABLE_TILE_MIN (102 gates, 0.11%)</title><rect x="5.9062%" y="61" width="0.1065%" height="23" fill="rgb(255,245,245)" fg:x="5656" fg:w="102"/><text x="6.1562%" y="75.50"></text></g><g><title>acir::blackbox::range (73 gates, 0.08%)</title><rect x="5.9365%" y="37" width="0.0762%" height="23" fill="rgb(255,245,245)" fg:x="5685" fg:w="73"/><text x="6.1865%" y="51.50"></text></g><g><title>acir::arithmetic (348 gates, 0.36%)</title><rect x="6.0127%" y="61" width="0.3634%" height="23" fill="rgb(255,241,241)" fg:x="5758" fg:w="348"/><text x="6.2627%" y="75.50"></text></g><g><title>map.nr:263:20::map[x] (1,305 gates, 1.36%)</title><rect x="6.0127%" y="85" width="1.3627%" height="23" fill="rgb(255,232,232)" fg:x="5758" fg:w="1305"/><text x="6.2627%" y="99.50"></text></g><g><title>acir::memory::op (957 gates, 1.00%)</title><rect x="6.3761%" y="61" width="0.9993%" height="23" fill="rgb(255,235,235)" fg:x="6106" fg:w="957"/><text x="6.6261%" y="75.50"></text></g><g><title>acir::arithmetic (58 gates, 0.06%)</title><rect x="7.3754%" y="61" width="0.0606%" height="23" fill="rgb(255,246,246)" fg:x="7063" fg:w="58"/><text x="7.6254%" y="75.50"></text></g><g><title>map.nr:263:20::map[x][y] &gt; 0 (116 gates, 0.12%)</title><rect x="7.3754%" y="85" width="0.1211%" height="23" fill="rgb(255,244,244)" fg:x="7063" fg:w="116"/><text x="7.6254%" y="99.50"></text></g><g><title>acir::blackbox::range (58 gates, 0.06%)</title><rect x="7.4360%" y="61" width="0.0606%" height="23" fill="rgb(255,246,246)" fg:x="7121" fg:w="58"/><text x="7.6860%" y="75.50"></text></g><g><title>acir::arithmetic (29 gates, 0.03%)</title><rect x="7.4966%" y="61" width="0.0303%" height="23" fill="rgb(255,247,247)" fg:x="7179" fg:w="29"/><text x="7.7466%" y="75.50"></text></g><g><title>acir::memory::init (322 gates, 0.34%)</title><rect x="7.5268%" y="61" width="0.3362%" height="23" fill="rgb(255,241,241)" fg:x="7208" fg:w="322"/><text x="7.7768%" y="75.50"></text></g><g><title>map.nr:263:20::map[x][y] (673 gates, 0.70%)</title><rect x="7.4966%" y="85" width="0.7028%" height="23" fill="rgb(255,237,237)" fg:x="7179" fg:w="673"/><text x="7.7466%" y="99.50"></text></g><g><title>acir::memory::op (322 gates, 0.34%)</title><rect x="7.8631%" y="61" width="0.3362%" height="23" fill="rgb(255,241,241)" fg:x="7530" fg:w="322"/><text x="8.1131%" y="75.50"></text></g><g><title>acir::arithmetic (318 gates, 0.33%)</title><rect x="8.1993%" y="61" width="0.3321%" height="23" fill="rgb(255,241,241)" fg:x="7852" fg:w="318"/><text x="8.4493%" y="75.50"></text></g><g><title>map.nr:281:7::sum += map[x][y] as u32 (880 gates, 0.92%)</title><rect x="8.1993%" y="85" width="0.9189%" height="23" fill="rgb(255,235,235)" fg:x="7852" fg:w="880"/><text x="8.4493%" y="99.50"></text></g><g><title>acir::blackbox::range (562 gates, 0.59%)</title><rect x="8.5314%" y="61" width="0.5869%" height="23" fill="rgb(255,238,238)" fg:x="8170" fg:w="562"/><text x="8.7814%" y="75.50"></text></g><g><title>acir::arithmetic (27 gates, 0.03%)</title><rect x="9.1182%" y="61" width="0.0282%" height="23" fill="rgb(255,247,247)" fg:x="8732" fg:w="27"/><text x="9.3682%" y="75.50"></text></g><g><title>action.nr:746:13::get_free_map(my_obstacles, their_obstacles) (5,896 gates, 6.16%)</title><rect x="3.0408%" y="109" width="6.1568%" height="23" fill="rgb(255,212,212)" fg:x="2912" fg:w="5896"/><text x="3.2908%" y="123.50">action.n..</text></g><g><title>map.nr:298:5::obstacle_sum += (!is_obstacle_traversible(obstacles[i])) as u32 + (!is_obstacle_traversible(their_obstacles[i])) as u32 (76 gates, 0.08%)</title><rect x="9.1182%" y="85" width="0.0794%" height="23" fill="rgb(255,245,245)" fg:x="8732" fg:w="76"/><text x="9.3682%" y="99.50"></text></g><g><title>acir::blackbox::range (49 gates, 0.05%)</title><rect x="9.1464%" y="61" width="0.0512%" height="23" fill="rgb(255,246,246)" fg:x="8759" fg:w="49"/><text x="9.3964%" y="75.50"></text></g><g><title>acir::arithmetic (32 gates, 0.03%)</title><rect x="9.1976%" y="37" width="0.0334%" height="23" fill="rgb(255,247,247)" fg:x="8808" fg:w="32"/><text x="9.4476%" y="51.50"></text></g><g><title>map.nr:62:14::curr &gt; target (104 gates, 0.11%)</title><rect x="9.1976%" y="61" width="0.1086%" height="23" fill="rgb(255,245,245)" fg:x="8808" fg:w="104"/><text x="9.4476%" y="75.50"></text></g><g><title>acir::blackbox::range (72 gates, 0.08%)</title><rect x="9.2310%" y="37" width="0.0752%" height="23" fill="rgb(255,245,245)" fg:x="8840" fg:w="72"/><text x="9.4810%" y="51.50"></text></g><g><title>acir::arithmetic (31 gates, 0.03%)</title><rect x="9.3062%" y="37" width="0.0324%" height="23" fill="rgb(255,247,247)" fg:x="8912" fg:w="31"/><text x="9.5562%" y="51.50"></text></g><g><title>map.nr:62:30::curr - target (69 gates, 0.07%)</title><rect x="9.3062%" y="61" width="0.0721%" height="23" fill="rgb(255,246,246)" fg:x="8912" fg:w="69"/><text x="9.5562%" y="75.50"></text></g><g><title>acir::blackbox::range (38 gates, 0.04%)</title><rect x="9.3386%" y="37" width="0.0397%" height="23" fill="rgb(255,247,247)" fg:x="8943" fg:w="38"/><text x="9.5886%" y="51.50"></text></g><g><title>acir::arithmetic (32 gates, 0.03%)</title><rect x="9.3783%" y="37" width="0.0334%" height="23" fill="rgb(255,247,247)" fg:x="8981" fg:w="32"/><text x="9.6283%" y="51.50"></text></g><g><title>map.nr:62:53::target - curr (73 gates, 0.08%)</title><rect x="9.3783%" y="61" width="0.0762%" height="23" fill="rgb(255,245,245)" fg:x="8981" fg:w="73"/><text x="9.6283%" y="75.50"></text></g><g><title>acir::blackbox::range (41 gates, 0.04%)</title><rect x="9.4117%" y="37" width="0.0428%" height="23" fill="rgb(255,246,246)" fg:x="9013" fg:w="41"/><text x="9.6617%" y="51.50"></text></g><g><title>map.nr:78:14::get_distance_part(curr_x, x) (278 gates, 0.29%)</title><rect x="9.1976%" y="85" width="0.2903%" height="23" fill="rgb(255,241,241)" fg:x="8808" fg:w="278"/><text x="9.4476%" y="99.50"></text></g><g><title>map.nr:63:3::d * d (32 gates, 0.03%)</title><rect x="9.4545%" y="61" width="0.0334%" height="23" fill="rgb(255,247,247)" fg:x="9054" fg:w="32"/><text x="9.7045%" y="75.50"></text></g><g><title>acir::arithmetic (32 gates, 0.03%)</title><rect x="9.4545%" y="37" width="0.0334%" height="23" fill="rgb(255,247,247)" fg:x="9054" fg:w="32"/><text x="9.7045%" y="51.50"></text></g><g><title>acir::arithmetic (10 gates, 0.01%)</title><rect x="9.4879%" y="37" width="0.0104%" height="23" fill="rgb(255,248,248)" fg:x="9086" fg:w="10"/><text x="9.7379%" y="51.50"></text></g><g><title>map.nr:62:14::curr &gt; target (32 gates, 0.03%)</title><rect x="9.4879%" y="61" width="0.0334%" height="23" fill="rgb(255,247,247)" fg:x="9086" fg:w="32"/><text x="9.7379%" y="75.50"></text></g><g><title>acir::blackbox::range (22 gates, 0.02%)</title><rect x="9.4984%" y="37" width="0.0230%" height="23" fill="rgb(255,247,247)" fg:x="9096" fg:w="22"/><text x="9.7484%" y="51.50"></text></g><g><title>acir::arithmetic (9 gates, 0.01%)</title><rect x="9.5213%" y="37" width="0.0094%" height="23" fill="rgb(255,248,248)" fg:x="9118" fg:w="9"/><text x="9.7713%" y="51.50"></text></g><g><title>map.nr:62:30::curr - target (21 gates, 0.02%)</title><rect x="9.5213%" y="61" width="0.0219%" height="23" fill="rgb(255,247,247)" fg:x="9118" fg:w="21"/><text x="9.7713%" y="75.50"></text></g><g><title>acir::blackbox::range (12 gates, 0.01%)</title><rect x="9.5307%" y="37" width="0.0125%" height="23" fill="rgb(255,248,248)" fg:x="9127" fg:w="12"/><text x="9.7807%" y="51.50"></text></g><g><title>acir::arithmetic (10 gates, 0.01%)</title><rect x="9.5433%" y="37" width="0.0104%" height="23" fill="rgb(255,248,248)" fg:x="9139" fg:w="10"/><text x="9.7933%" y="51.50"></text></g><g><title>map.nr:62:53::target - curr (22 gates, 0.02%)</title><rect x="9.5433%" y="61" width="0.0230%" height="23" fill="rgb(255,247,247)" fg:x="9139" fg:w="22"/><text x="9.7933%" y="75.50"></text></g><g><title>acir::blackbox::range (12 gates, 0.01%)</title><rect x="9.5537%" y="37" width="0.0125%" height="23" fill="rgb(255,248,248)" fg:x="9149" fg:w="12"/><text x="9.8037%" y="51.50"></text></g><g><title>map.nr:79:14::get_distance_part(curr_y, y) (85 gates, 0.09%)</title><rect x="9.4879%" y="85" width="0.0888%" height="23" fill="rgb(255,245,245)" fg:x="9086" fg:w="85"/><text x="9.7379%" y="99.50"></text></g><g><title>map.nr:63:3::d * d (10 gates, 0.01%)</title><rect x="9.5662%" y="61" width="0.0104%" height="23" fill="rgb(255,248,248)" fg:x="9161" fg:w="10"/><text x="9.8162%" y="75.50"></text></g><g><title>acir::arithmetic (10 gates, 0.01%)</title><rect x="9.5662%" y="37" width="0.0104%" height="23" fill="rgb(255,248,248)" fg:x="9161" fg:w="10"/><text x="9.8162%" y="51.50"></text></g><g><title>map.nr:88:18::x + y (480 gates, 0.50%)</title><rect x="9.5767%" y="61" width="0.5012%" height="23" fill="rgb(255,239,239)" fg:x="9171" fg:w="480"/><text x="9.8267%" y="75.50"></text></g><g><title>acir::blackbox::range (480 gates, 0.50%)</title><rect x="9.5767%" y="37" width="0.5012%" height="23" fill="rgb(255,239,239)" fg:x="9171" fg:w="480"/><text x="9.8267%" y="51.50"></text></g><g><title>acir::arithmetic (320 gates, 0.33%)</title><rect x="10.0779%" y="37" width="0.3342%" height="23" fill="rgb(255,241,241)" fg:x="9651" fg:w="320"/><text x="10.3279%" y="51.50"></text></g><g><title>map.nr:89:6::distance &gt; MAX_DISTANCE (1,279 gates, 1.34%)</title><rect x="10.0779%" y="61" width="1.3356%" height="23" fill="rgb(255,232,232)" fg:x="9651" fg:w="1279"/><text x="10.3279%" y="75.50"></text></g><g><title>acir::blackbox::range (959 gates, 1.00%)</title><rect x="10.4121%" y="37" width="1.0014%" height="23" fill="rgb(255,235,235)" fg:x="9971" fg:w="959"/><text x="10.6621%" y="51.50"></text></g><g><title>acir::arithmetic (320 gates, 0.33%)</title><rect x="11.4135%" y="37" width="0.3342%" height="23" fill="rgb(255,241,241)" fg:x="10930" fg:w="320"/><text x="11.6635%" y="51.50"></text></g><g><title>action.nr:752:22::get_distance(actor.get_x(), actor.get_y(), action_target_x, action_target_y) (3,405 gates, 3.56%)</title><rect x="9.1976%" y="109" width="3.5556%" height="23" fill="rgb(255,221,221)" fg:x="8808" fg:w="3405"/><text x="9.4476%" y="123.50">acti..</text></g><g><title>map.nr:83:3::get_distance_from_parts(dx, dy) (3,042 gates, 3.18%)</title><rect x="9.5767%" y="85" width="3.1766%" height="23" fill="rgb(255,223,223)" fg:x="9171" fg:w="3042"/><text x="9.8267%" y="99.50">map..</text></g><g><title>map.nr:92:5::distance as u16 (1,283 gates, 1.34%)</title><rect x="11.4135%" y="61" width="1.3398%" height="23" fill="rgb(255,232,232)" fg:x="10930" fg:w="1283"/><text x="11.6635%" y="75.50"></text></g><g><title>acir::blackbox::range (963 gates, 1.01%)</title><rect x="11.7476%" y="37" width="1.0056%" height="23" fill="rgb(255,235,235)" fg:x="11250" fg:w="963"/><text x="11.9976%" y="51.50"></text></g><g><title>acir::arithmetic (320 gates, 0.33%)</title><rect x="12.7532%" y="61" width="0.3342%" height="23" fill="rgb(255,241,241)" fg:x="12213" fg:w="320"/><text x="13.0032%" y="75.50"></text></g><g><title>action.nr:756:34::is_distance_within_viewing_range(distance) (960 gates, 1.00%)</title><rect x="12.7532%" y="109" width="1.0025%" height="23" fill="rgb(255,235,235)" fg:x="12213" fg:w="960"/><text x="13.0032%" y="123.50"></text></g><g><title>map.nr:145:3::distance &lt;= (VIEW_DISTANCE as u16 * VIEW_DISTANCE as u16) (960 gates, 1.00%)</title><rect x="12.7532%" y="85" width="1.0025%" height="23" fill="rgb(255,235,235)" fg:x="12213" fg:w="960"/><text x="13.0032%" y="99.50"></text></g><g><title>acir::blackbox::range (640 gates, 0.67%)</title><rect x="13.0874%" y="61" width="0.6683%" height="23" fill="rgb(255,237,237)" fg:x="12533" fg:w="640"/><text x="13.3374%" y="75.50"></text></g><g><title>action.nr:756:80::0 == map[action_target_x][action_target_y] (640 gates, 0.67%)</title><rect x="13.7557%" y="109" width="0.6683%" height="23" fill="rgb(255,237,237)" fg:x="13173" fg:w="640"/><text x="14.0057%" y="123.50"></text></g><g><title>acir::arithmetic (640 gates, 0.67%)</title><rect x="13.7557%" y="85" width="0.6683%" height="23" fill="rgb(255,237,237)" fg:x="13173" fg:w="640"/><text x="14.0057%" y="99.50"></text></g><g><title>action.nr:765:48::action_def (22,167 gates, 23.15%)</title><rect x="14.4240%" y="109" width="23.1475%" height="23" fill="rgb(255,177,177)" fg:x="13813" fg:w="22167"/><text x="14.6740%" y="123.50">action.nr:765:48::action_def</text></g><g><title>acir::blackbox::and (22,167 gates, 23.15%)</title><rect x="14.4240%" y="85" width="23.1475%" height="23" fill="rgb(255,177,177)" fg:x="13813" fg:w="22167"/><text x="14.6740%" y="99.50">acir::blackbox::and</text></g><g><title>action.nr:771:47::is_valid (22,421 gates, 23.41%)</title><rect x="37.5715%" y="109" width="23.4128%" height="23" fill="rgb(255,177,177)" fg:x="35980" fg:w="22421"/><text x="37.8215%" y="123.50">action.nr:771:47::is_valid</text></g><g><title>acir::arithmetic (22,421 gates, 23.41%)</title><rect x="37.5715%" y="85" width="23.4128%" height="23" fill="rgb(255,177,177)" fg:x="35980" fg:w="22421"/><text x="37.8215%" y="99.50">acir::arithmetic</text></g><g><title>acir::arithmetic (14 gates, 0.01%)</title><rect x="60.9843%" y="85" width="0.0146%" height="23" fill="rgb(255,248,248)" fg:x="58401" fg:w="14"/><text x="61.2343%" y="99.50"></text></g><g><title>acir::blackbox::and (1,066 gates, 1.11%)</title><rect x="60.9989%" y="85" width="1.1132%" height="23" fill="rgb(255,234,234)" fg:x="58415" fg:w="1066"/><text x="61.2489%" y="99.50"></text></g><g><title>action.nr:771:67::action_def (1,113 gates, 1.16%)</title><rect x="60.9843%" y="109" width="1.1622%" height="23" fill="rgb(255,233,233)" fg:x="58401" fg:w="1113"/><text x="61.2343%" y="123.50"></text></g><g><title>acir::blackbox::range (33 gates, 0.03%)</title><rect x="62.1121%" y="85" width="0.0345%" height="23" fill="rgb(255,247,247)" fg:x="59481" fg:w="33"/><text x="62.3621%" y="99.50"></text></g><g><title>actionDefinition.nr:17:17::( (321 gates, 0.34%)</title><rect x="62.1465%" y="109" width="0.3352%" height="23" fill="rgb(255,241,241)" fg:x="59514" fg:w="321"/><text x="62.3965%" y="123.50"></text></g><g><title>acir::arithmetic (321 gates, 0.34%)</title><rect x="62.1465%" y="85" width="0.3352%" height="23" fill="rgb(255,241,241)" fg:x="59514" fg:w="321"/><text x="62.3965%" y="99.50"></text></g><g><title>actionDefinition.nr:17:18::($register[$bytes] as u8 &amp; $divisor as u8) != 0 as u8 (112 gates, 0.12%)</title><rect x="62.4817%" y="109" width="0.1170%" height="23" fill="rgb(255,244,244)" fg:x="59835" fg:w="112"/><text x="62.7317%" y="123.50"></text></g><g><title>acir::arithmetic (112 gates, 0.12%)</title><rect x="62.4817%" y="85" width="0.1170%" height="23" fill="rgb(255,244,244)" fg:x="59835" fg:w="112"/><text x="62.7317%" y="99.50"></text></g><g><title>actionDefinition.nr:19:17::( (21 gates, 0.02%)</title><rect x="62.5987%" y="109" width="0.0219%" height="23" fill="rgb(255,247,247)" fg:x="59947" fg:w="21"/><text x="62.8487%" y="123.50"></text></g><g><title>acir::arithmetic (21 gates, 0.02%)</title><rect x="62.5987%" y="85" width="0.0219%" height="23" fill="rgb(255,247,247)" fg:x="59947" fg:w="21"/><text x="62.8487%" y="99.50"></text></g><g><title>acir::arithmetic (21 gates, 0.02%)</title><rect x="62.6206%" y="85" width="0.0219%" height="23" fill="rgb(255,247,247)" fg:x="59968" fg:w="21"/><text x="62.8706%" y="99.50"></text></g><g><title>actionDefinition.nr:19:18::($register[$bytes] as u8 / $divisor as u8) &amp; $mask as u8 (85 gates, 0.09%)</title><rect x="62.6206%" y="109" width="0.0888%" height="23" fill="rgb(255,245,245)" fg:x="59968" fg:w="85"/><text x="62.8706%" y="123.50"></text></g><g><title>acir::blackbox::range (64 gates, 0.07%)</title><rect x="62.6425%" y="85" width="0.0668%" height="23" fill="rgb(255,246,246)" fg:x="59989" fg:w="64"/><text x="62.8925%" y="99.50"></text></g><g><title>actionPreCalcEffect.nr:33:178::action_target_x == actor_target_x (64 gates, 0.07%)</title><rect x="62.7094%" y="109" width="0.0668%" height="23" fill="rgb(255,246,246)" fg:x="60053" fg:w="64"/><text x="62.9594%" y="123.50"></text></g><g><title>acir::arithmetic (64 gates, 0.07%)</title><rect x="62.7094%" y="85" width="0.0668%" height="23" fill="rgb(255,246,246)" fg:x="60053" fg:w="64"/><text x="62.9594%" y="99.50"></text></g><g><title>actionPreCalcEffect.nr:33:216::action_target_y == actor_target_y (20 gates, 0.02%)</title><rect x="62.7762%" y="109" width="0.0209%" height="23" fill="rgb(255,247,247)" fg:x="60117" fg:w="20"/><text x="63.0262%" y="123.50"></text></g><g><title>acir::arithmetic (20 gates, 0.02%)</title><rect x="62.7762%" y="85" width="0.0209%" height="23" fill="rgb(255,247,247)" fg:x="60117" fg:w="20"/><text x="63.0262%" y="99.50"></text></g><g><title>acir::arithmetic (2,240 gates, 2.34%)</title><rect x="62.7971%" y="85" width="2.3391%" height="23" fill="rgb(255,227,227)" fg:x="60137" fg:w="2240"/><text x="63.0471%" y="99.50">a..</text></g><g><title>actionPreCalcEffect.nr:81:26::(
+      ((!is_continuous) as u8 * (!is_interrupting) as u8) + // that&apos;s the ID of the wait action =&gt; leave status, but not continuous
+      ((is_continuous) as u8 * continues_action as u8 * not_interrupted_through_retargeting as u8)
+    ) &gt; 0 (7,224 gates, 7.54%)</title><rect x="62.7971%" y="109" width="7.5435%" height="23" fill="rgb(255,208,208)" fg:x="60137" fg:w="7224"/><text x="63.0471%" y="123.50">actionPreC..</text></g><g><title>acir::blackbox::range (4,984 gates, 5.20%)</title><rect x="65.1362%" y="85" width="5.2045%" height="23" fill="rgb(255,215,215)" fg:x="62377" fg:w="4984"/><text x="65.3862%" y="99.50">acir::..</text></g><g><title>actionPreCalcEffect.nr:82:7::((!is_continuous) as u8 * (!is_interrupting) as u8) + // that&apos;s the ID of the wait action =&gt; leave status, but not continuous
+      ((is_continuous) as u8 * continues_action as u8 * not_interrupted_through_retargeting as u8) (2,744 gates, 2.87%)</title><rect x="70.3406%" y="109" width="2.8654%" height="23" fill="rgb(255,224,224)" fg:x="67361" fg:w="2744"/><text x="70.5906%" y="123.50">ac..</text></g><g><title>acir::blackbox::range (2,744 gates, 2.87%)</title><rect x="70.3406%" y="85" width="2.8654%" height="23" fill="rgb(255,224,224)" fg:x="67361" fg:w="2744"/><text x="70.5906%" y="99.50">ac..</text></g><g><title>actionPreCalcEffect.nr:83:8::(is_continuous) as u8 * continues_action as u8 * not_interrupted_through_retargeting as u8 (2,247 gates, 2.35%)</title><rect x="73.2060%" y="109" width="2.3464%" height="23" fill="rgb(255,227,227)" fg:x="70105" fg:w="2247"/><text x="73.4560%" y="123.50">a..</text></g><g><title>acir::arithmetic (2,247 gates, 2.35%)</title><rect x="73.2060%" y="85" width="2.3464%" height="23" fill="rgb(255,227,227)" fg:x="70105" fg:w="2247"/><text x="73.4560%" y="99.50">a..</text></g><g><title>actionRequirements.nr:23:104::actor_y != action_target_y (20 gates, 0.02%)</title><rect x="75.5524%" y="109" width="0.0209%" height="23" fill="rgb(255,247,247)" fg:x="72352" fg:w="20"/><text x="75.8024%" y="123.50"></text></g><g><title>acir::arithmetic (20 gates, 0.02%)</title><rect x="75.5524%" y="85" width="0.0209%" height="23" fill="rgb(255,247,247)" fg:x="72352" fg:w="20"/><text x="75.8024%" y="99.50"></text></g><g><title>actionRequirements.nr:23:73::actor_x != action_target_x (64 gates, 0.07%)</title><rect x="75.5733%" y="109" width="0.0668%" height="23" fill="rgb(255,246,246)" fg:x="72372" fg:w="64"/><text x="75.8233%" y="123.50"></text></g><g><title>acir::arithmetic (64 gates, 0.07%)</title><rect x="75.5733%" y="85" width="0.0668%" height="23" fill="rgb(255,246,246)" fg:x="72372" fg:w="64"/><text x="75.8233%" y="99.50"></text></g><g><title>actionRequirements.nr:28:66::action_req_min_progress (5,208 gates, 5.44%)</title><rect x="75.6401%" y="109" width="5.4384%" height="23" fill="rgb(255,215,215)" fg:x="72436" fg:w="5208"/><text x="75.8901%" y="123.50">actionR..</text></g><g><title>acir::blackbox::range (5,208 gates, 5.44%)</title><rect x="75.6401%" y="85" width="5.4384%" height="23" fill="rgb(255,215,215)" fg:x="72436" fg:w="5208"/><text x="75.8901%" y="99.50">acir::b..</text></g><g><title>actionRequirements.nr:29:66::action_req_max_progress (4,984 gates, 5.20%)</title><rect x="81.0785%" y="109" width="5.2045%" height="23" fill="rgb(255,215,215)" fg:x="77644" fg:w="4984"/><text x="81.3285%" y="123.50">action..</text></g><g><title>acir::blackbox::range (4,984 gates, 5.20%)</title><rect x="81.0785%" y="85" width="5.2045%" height="23" fill="rgb(255,215,215)" fg:x="77644" fg:w="4984"/><text x="81.3285%" y="99.50">acir::..</text></g><g><title>actionRequirements.nr:30:100::action_req_status as u8 == actor_progress as u8 (6,720 gates, 7.02%)</title><rect x="86.2829%" y="109" width="7.0173%" height="23" fill="rgb(255,210,210)" fg:x="82628" fg:w="6720"/><text x="86.5329%" y="123.50">actionReq..</text></g><g><title>acir::arithmetic (6,720 gates, 7.02%)</title><rect x="86.2829%" y="85" width="7.0173%" height="23" fill="rgb(255,210,210)" fg:x="82628" fg:w="6720"/><text x="86.5329%" y="99.50">acir::ari..</text></g><g><title>actionRequirements.nr:30:61::action_req_status as u8 == 0 as u8 (14 gates, 0.01%)</title><rect x="93.3002%" y="109" width="0.0146%" height="23" fill="rgb(255,248,248)" fg:x="89348" fg:w="14"/><text x="93.5502%" y="123.50"></text></g><g><title>acir::arithmetic (14 gates, 0.01%)</title><rect x="93.3002%" y="85" width="0.0146%" height="23" fill="rgb(255,248,248)" fg:x="89348" fg:w="14"/><text x="93.5502%" y="99.50"></text></g><g><title>actionRequirements.nr:32:63::distance (5,760 gates, 6.01%)</title><rect x="93.3148%" y="109" width="6.0148%" height="23" fill="rgb(255,213,213)" fg:x="89362" fg:w="5760"/><text x="93.5648%" y="123.50">actionRe..</text></g><g><title>acir::blackbox::range (5,760 gates, 6.01%)</title><rect x="93.3148%" y="85" width="6.0148%" height="23" fill="rgb(255,213,213)" fg:x="89362" fg:w="5760"/><text x="93.5648%" y="99.50">acir::bl..</text></g><g><title>all (95,764 gates, 100%)</title><rect x="0.0000%" y="133" width="100.0000%" height="23" fill="rgb(255,100,100)" fg:x="0" fg:w="95764"/><text x="0.2500%" y="147.50"></text></g><g><title>actionRequirements.nr:72:43::! (642 gates, 0.67%)</title><rect x="99.3296%" y="109" width="0.6704%" height="23" fill="rgb(255,237,237)" fg:x="95122" fg:w="642"/><text x="99.5796%" y="123.50"></text></g><g><title>acir::arithmetic (642 gates, 0.67%)</title><rect x="99.3296%" y="85" width="0.6704%" height="23" fill="rgb(255,237,237)" fg:x="95122" fg:w="642"/><text x="99.5796%" y="99.50"></text></g></svg></svg>

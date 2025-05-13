@@ -447,9 +447,9 @@ impl Character {
     }
 
     pub fn take_damage(self, attack_type: u8, dmg: u8) -> Character {
-        let damage_after_resistances = get_attack_damage_to_tile(attack_type, dmg as u16, self.class);
+        let damage_after_resistances = get_attack_damage_to_tile(attack_type, dmg as u32, self.class);
         let mut c = self;
-        if damage_after_resistances > (c.health as u16) {
+        if damage_after_resistances > (c.health as u32) {
             c.health = 0;
         } else {
             c.health -= (damage_after_resistances as u8);
@@ -504,7 +504,16 @@ impl Character {
             assert(WIDTH_BITS + 1 <= 8);
         }
 
-        let mut is_valid = true;
+      let (is_valid, c) = parse_unconstrained(id, data, actions_data, wait_action, events, enemy_advance);
+      // assert(c.)
+
+        assert(c.is_valid());
+        (is_valid, c)
+    }
+}
+
+fn parse_unconstrained(id: u8, data: Field, actions_data: SerializedArenaActionDefinitions, wait_action: ActionDefinition, events: [Event; MAX_EVENTS], enemy_advance: u8) -> (bool,Character) {
+          let mut is_valid = true;
 
         let split: [u8; 32] = data.to_be_bytes::<32>();
         assert(split.len() == 32);
@@ -583,9 +592,7 @@ impl Character {
             ],
             status: 0 // TODO: status
         };
-        assert(c.is_valid());
         (is_valid, c)
-    }
 }
 
 // unconstrained fn create_character_unconstrained(
@@ -826,14 +833,14 @@ pub fn serialize_chars(chars: [Character; MAX_CHARACTERS]) -> pub (Field, Serial
 /**
 * For now we will only take class into account.
 */
-pub fn get_attack_damage_to_tile(attack_type: u8, damage: u16, class: u8) -> u16 {
+pub fn get_attack_damage_to_tile(attack_type: u8, damage: u32, class: u8) -> u32 {
     debug!(quote { assert(class <= arenalib::MAX_DAMAGEABLE_TILE); });
-    (damage * resistances[attack_type * 8 + (class & 7)] / 100) as u16
+    (damage * resistances[attack_type * 8 + (class & 7)] as u32 / 100) as u32
 }
 
-pub fn get_trap_damage_to_tile(damage: u16, class: u8) -> u16 {
+pub fn get_trap_damage_to_tile(damage: u32, class: u8) -> u32 {
     debug!(quote { assert(class <= arenalib::MAX_DAMAGEABLE_TILE); });
-    (damage * trap_resistances[class & 7] / 100) as u16
+    (damage * trap_resistances[class & 7] as u32 / 100) as u32
 }
 
 #[test]

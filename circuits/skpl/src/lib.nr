@@ -36,7 +36,7 @@ use arenalib::{serialize_actions, parse_actions};
 
 use arenalib::{SERIALIZED_ENEMY_OBSTACLES_ARRAY_SIZE, SERIALIZED_EVENTS_ARRAY_SIZE, SERIALIZED_EVENTS_PER_FIELD, SERIALIZED_OBSTACLES_ARRAY_SIZE, SERIALIZED_OBSTACLES_PER_FIELD, SERIALIZED_OBSTACLE_BYTE_SIZE};
 use arenalib::{WIDTH};
-use arenalib::{MAX_ACTIONS, MAX_CHARACTERS, MAX_EVENTS, MAX_OBSTACLES};
+use arenalib::{MAX_ACTIONS, MAX_CHARACTERS, MAX_EVENTS, MAX_OBSTACLES, MAX_ENEMY_OBSTACLES};
 use arenalib::{VIEW_DISTANCE};
 use arenalib::{ARCHER, KNIGHT, ROGUE, MAGE, RITUALIST};
 use arenalib::{MIN_FIREBALL_ROUNDS_FOR_CAST};
@@ -44,6 +44,10 @@ use arenalib::{SEE_MOVE, RECEIVE_ATTACK, NO_EVENT};
 use arenalib::{ATTACK_FIREBALL, ATTACK_RANGED};
 use arenalib::{WAIT};
 use arenalib::get_wait_action_def;
+use arenalib::get_test_action_register;
+pub use action::get_performable_actions;
+use arenalib::Action;
+use arenalib::get_action_actor;
 
 // mod ResolvedAction;
 
@@ -344,6 +348,41 @@ fn get_serialized_obstacle(id: u8, x: u8, y: u8, obstacle_type: u8) -> pub Field
 //   WIN
 // );
 
+#[export]
+pub fn calculate_action(
+  action: Action,
+  mut my_chars: [Character; MAX_CHARACTERS],
+  mut my_obstacles_parsed: [Obstacle; MAX_OBSTACLES],
+  enemy_objects_parsed: [Obstacle; MAX_ENEMY_OBSTACLES],
+  enemy_advance_input: u8,
+  mut energy: u8
+) -> (bool, [Character; MAX_CHARACTERS], [Obstacle; MAX_OBSTACLES], u8, Event) {
+  let mut success = true;
+  let actor_id = get_action_actor(action);
+  let mut actor = my_chars[actor_id];
+  let (my_chars_as_obstacles_valid, my_chars_as_obstacles) = chars_to_obstacles(my_chars);
+  softassert!(quote { success }, quote { my_chars_as_obstacles_valid }, quote { f"Failed to convert my chars to obstacles: {my_chars}" });
+  let result = execute_action(action, enemy_advance_input, actor, energy, my_chars_as_obstacles, my_obstacles_parsed, enemy_objects_parsed);
+  //assert(result.0);
+  success &= result.0;
+  let result_event = result.1;
+  let internal_event = result.2;
+  let self_event = result.3;
+  actor = result.4;
+  energy = result.5;
+  
+  // 4461 / 5 = 892,2
+  my_chars = my_chars.map(|c| wb_apply_damage_to_char(c, result_event, actor));
+  // 16800 / 24 = 700
+  my_obstacles_parsed = my_obstacles_parsed.map(|obstacle| {
+      let (updated_obstacle_valid, updated_obstacle) = update_my_obstacle(obstacle, result_event);
+      //success = success & updated_obstacle_valid;
+      softassert!(quote { success }, quote { updated_obstacle_valid }, quote { f"Failed to update my obstacle {obstacle}, {result_event}" });
+      updated_obstacle
+  });
+
+  (success, my_chars, my_obstacles_parsed, energy, result_event)
+}
 
 #[export]
 pub fn calculate_turn(
@@ -399,7 +438,7 @@ pub fn calculate_turn(
     softassert!(quote { success }, quote { my_chars_valid }, quote { f"Failed to parse my characters {my_chars}" });
 
     let actor_id = get_actor_from_move(move_input);
-    let mut actor = my_chars[actor_id]; //Character::parse(actor_id, my_chars, events);
+    // let mut actor = my_chars[actor_id]; //Character::parse(actor_id, my_chars, events);
     
     comptime {
         assert(MAX_OBSTACLES == 24);
@@ -425,25 +464,47 @@ pub fn calculate_turn(
         // TODO: ensure that if actor committed suicide, it is not allowed to do any more actions
         let action = actions[i];
         //let resolved_action = actionRegister.resolve_action(action); //resolve_action(action);
-        let result = execute_action(action, enemy_advance_input, actor, energy, my_obstacles_parsed, enemy_objects_parsed);
-        //assert(result.0);
-        success &= result.0;
-        let result_event = result.1;
-        let internal_event = result.2;
-        actor = result.4;
-        energy = result.5;
-        
-        // 4461 / 5 = 892,2
-        my_chars = my_chars.map(|c| wb_apply_damage_to_char(c, result_event, actor));
-        // 16800 / 24 = 700
-        my_obstacles_parsed = my_obstacles_parsed.map(|obstacle| {
-            let (updated_obstacle_valid, updated_obstacle) = update_my_obstacle(obstacle, result_event);
-            //success = success & updated_obstacle_valid;
-            softassert!(quote { success }, quote { updated_obstacle_valid }, quote { f"Failed to update my obstacle {obstacle}, {result_event}" });
-            updated_obstacle
-        });
 
-        result_events_calculated = result_events_calculated.push_back(result_event);
+        let (
+          turn_action_result_action_valid,
+          turn_action_result_my_chars,
+          turn_action_result_my_obstacles_parsed,
+          turn_action_result_energy,
+          turn_action_result_result_event
+        ) = calculate_action(
+          action,
+          my_chars,
+          my_obstacles_parsed,
+          enemy_objects_parsed,
+          enemy_advance_input,
+          energy
+        );
+        softassert!(quote { success }, quote { turn_action_result_action_valid }, quote { f"Failed to execute turn action {i}" });
+
+        my_chars = turn_action_result_my_chars;
+        my_obstacles_parsed = turn_action_result_my_obstacles_parsed;
+        energy = turn_action_result_energy;
+
+        // let result = execute_action(action, enemy_advance_input, actor, energy, my_obstacles_parsed, enemy_objects_parsed);
+        // //assert(result.0);
+        // success &= result.0;
+        // let result_event = result.1;
+        // let internal_event = result.2;
+        // let self_event = result.3;
+        // actor = result.4;
+        // energy = result.5;
+        
+        // // 4461 / 5 = 892,2
+        // my_chars = my_chars.map(|c| wb_apply_damage_to_char(c, result_event, actor));
+        // // 16800 / 24 = 700
+        // my_obstacles_parsed = my_obstacles_parsed.map(|obstacle| {
+        //     let (updated_obstacle_valid, updated_obstacle) = update_my_obstacle(obstacle, result_event);
+        //     //success = success & updated_obstacle_valid;
+        //     softassert!(quote { success }, quote { updated_obstacle_valid }, quote { f"Failed to update my obstacle {obstacle}, {result_event}" });
+        //     updated_obstacle
+        // });
+
+        result_events_calculated = result_events_calculated.push_back(turn_action_result_result_event);
     }
     let result_events_calculated = serialize_events(result_events_calculated.as_array());
     assert(result_events_calculated.len() == SERIALIZED_EVENTS_ARRAY_SIZE);
@@ -713,6 +774,19 @@ fn get_data_hash(secret: Field, characters: Field, character_actions: Serialized
 //     std::field::bytes32_to_field(result)
 // }
 
+#[export]
+pub fn chars_to_obstacles(chars: [Character; MAX_CHARACTERS]) -> pub (bool, [Obstacle; MAX_CHARACTERS]) {
+  let mut result: BoundedVec<Obstacle, MAX_CHARACTERS> = BoundedVec::new();
+  let mut valid_result = true;
+  for i in 0..MAX_CHARACTERS {
+    let (valid, char_as_obstacle) = chars[i].to_obstacle();
+    result.push(char_as_obstacle);
+    valid_result &= valid;
+  }
+  assert(result.len() == MAX_CHARACTERS);
+  (valid_result, result.storage())
+}
+
 fn serialize_chars_as_obstacles(enemy_advance: u8, chars: [Character; MAX_CHARACTERS]) -> (bool, Field) {
   let enemy_advance = if enemy_advance >= WIDTH { 0 } else { WIDTH - enemy_advance - 1 };
     let mut result: [u8; 32] = [0; 32];
@@ -930,7 +1004,7 @@ fn test_main_fireball_ff() {
         actions: chars[0][4].actions
     };
     //let mut last_hashes = [ 0x090a46a65d4c7c05f3c98b25c2639539d91c1542fd78e9c9c837f96de08c6a84, 0x2bca22f32b0b864574d0509ba146be256d2186fc490311756f541e1b5f8e391f ];
-    let mut last_hashes = [ 0x07a86579c9d2236bd1c02ced0660e9280e1d9a73146a0c9c8e4d8e27d64d6565, 0x2bca22f32b0b864574d0509ba146be256d2186fc490311756f541e1b5f8e391f ];
+    let mut last_hashes = [ 0x2cb6bffa42e22e89cbd87e4ac9ae7a82214febcab9c7b68e33fb1b7b8263ce7d, 0x2bca22f32b0b864574d0509ba146be256d2186fc490311756f541e1b5f8e391f ];
     let mut advances = [12 + VIEW_DISTANCE, 18 + VIEW_DISTANCE];
 
     let side = move as u1;
@@ -997,7 +1071,8 @@ fn test_calc_fireball_ff() {
   // let action_serde = ActionSerDe::new(MAX_ACTIONS, MAX_ACTIONS_PER_CHARACTER as u8, WIDTH, HEIGHT, WAIT);
   let wait_action = get_wait_action_def();
     let secrets = [123456789, 9876543210];
-    let test_actions = [0x03f00001300314002000000000100300000020000000002000000000000000, 0x02f0000110071020100a000020100a00000020000000002000000000000000, 0x02f0000a3b1901002000000000000801000020000000002000000000000000, 0x023100081b161118120a010018120a01000020000000002000000000000000, 0xf0003f000001002000000000200000000020000000002000000000000000, 0xf0003f000001002000000000200000000020000000002000000000000000, 0x03f00001300414002000000000100300000020000000002000000000000000, 0x02f0000110071008100a000008100a00000020000000002000000000000000, 0xf0003f1b1c11002000000000000702000020000000002000000000000000, 0xff003f1b1c1100200e013f00000e013f0020000000002000000000000000, 0xf0003f000001002000000000200000000020000000002000000000000000, 0xf0003f000001002000000000200000000020000000002000000000000000, 0x03f00001300314002000000000100300000020000000002000000000000000, 0x02f0000110071018100a000018100a00000020000000002000000000000000, 0x09f0000130060c002000000000200000000020000000002000000000000000, 0xf00001100610001005000100100500010020000000002000000000000000, 0xf00001301c0100100d000000100d00000020000000002000000000000000, 0x0bf00001100c00002000000000200000000010040a00002000000000000000, 0x03f00001300414002000000000100300000020000000002000000000000000, 0x02f0000110061028100a000028100a00000020000000002000000000000000, 0xf0003f000001002000000000200000000020000000002000000000000000, 0xf0003f000001002000000000200000000020000000002000000000000000, 0xf0003f000001002000000000200000000020000000002000000000000000, 0xf0003f000001002000000000200000000020000000002000000000000000, 0x03f00001300414002000000000100300000020000000002000000000000000, 0x02f0000110071010100a000010100a00000020000000002000000000000000, 0xf000071b1611002000000000000705000020000000002000000000000000, 0x6300061b161164150a020164150a02010020000000002000000000000000, 0xf0003f000001002000000000200000000020000000002000000000000000, 0xf0003f000001002000000000200000000020000000002000000000000000].map(|a|a.to_be_bytes());
+    let test_actions_raw = [0x03f00001300314002000000000100300000020000000002000000000000000, 0x02f0000110071020100a000020100a00000020000000002000000000000000, 0x02f0000a3b1901002000000000000801000020000000002000000000000000, 0x023100081b161118120a010018120a01000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0x03f00001300414002000000000100300000020000000002000000000000000, 0x02f0000110071008100a000008100a00000020000000002000000000000000, 0xf000ff1b1c11002000000000000702000020000000002000000000000000, 0xff00ff1b1c1100200e013f00000e013f0020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0x03f00001300314002000000000100300000020000000002000000000000000, 0x02f0000110071018100a000018100a00000020000000002000000000000000, 0x09f0000130060c002000000000200000000020000000002000000000000000, 0xf00001100610001005000100100500010020000000002000000000000000, 0xf00001301c0100100d000000100d00000020000000002000000000000000, 0x0bf00001100c00002000000000200000000010040a00002000000000000000, 0x03f00001300414002000000000100300000020000000002000000000000000, 0x02f0000110061028100a000028100a00000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0x03f00001300414002000000000100300000020000000002000000000000000, 0x02f0000110071010100a000010100a00000020000000002000000000000000, 0xf000071b1611002000000000000705000020000000002000000000000000, 0x6300061b161164150a020164150a02010020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000];
+    let test_actions = test_actions_raw.map(|a|a.to_be_bytes());
     let mut chars = [
         [
             Character { id: 0, class: ARCHER, x: 9, y: 2, health: 100, progress: 1, target_x: 0, target_y: 0, has_been_seen: true, is_hidden: 0, damage_mod: 0, last_action: WAIT, actions: [wait_action, test_actions[0], test_actions[1], test_actions[2], test_actions[3], test_actions[4], test_actions[5]], status: 0, },
@@ -1058,7 +1133,7 @@ fn test_calc_fireball_ff() {
         actions: chars[0][4].actions
     };
     //let mut last_hashes = [ 0x090a46a65d4c7c05f3c98b25c2639539d91c1542fd78e9c9c837f96de08c6a84, 0x2bca22f32b0b864574d0509ba146be256d2186fc490311756f541e1b5f8e391f ];
-    let mut last_hashes = [ 0x07a86579c9d2236bd1c02ced0660e9280e1d9a73146a0c9c8e4d8e27d64d6565, 0x2bca22f32b0b864574d0509ba146be256d2186fc490311756f541e1b5f8e391f ];
+    let mut last_hashes = [ 0x2cb6bffa42e22e89cbd87e4ac9ae7a82214febcab9c7b68e33fb1b7b8263ce7d, 0x2bca22f32b0b864574d0509ba146be256d2186fc490311756f541e1b5f8e391f ];
     let mut advances = [12 + VIEW_DISTANCE, 18 + VIEW_DISTANCE];
 
     let side = move as u1;
@@ -1080,18 +1155,18 @@ fn test_calc_fireball_ff() {
     let test_result_object_other_side = test_result_object_other_side_result.1;
     let (test_result_object_other_chars_valid, test_result_object_other_chars) = test_result_object_builder(advances[side], chars[other_side], test_result_object_other_side);
     println("Test-Inputs:");
-    println(secrets[side]);
-    println(character::serialize_chars(chars[side]));
+    // println(secrets[side]);
+    // println(character::serialize_chars(chars[side]));
     // println(get_test_action_register());
-    println(my_obstacles_serialized_for_me);
-    println(serialize_actions(actor.id, actions));
-    println(move);
-    println(advances[other_side]);
-    println(test_result_object_other_chars);
-    println(serialize_events(their_events));
-    println(advances[side]);
-    println(serialize_events(my_events));
-    println(test_result_object_chars_after);
+    // println(my_obstacles_serialized_for_me);
+    // println(serialize_actions(actor.id, actions));
+    // println(move);
+    // println(advances[other_side]);
+    // println(test_result_object_other_chars);
+    // println(serialize_events(their_events));
+    // println(advances[side]);
+    // println(serialize_events(my_events));
+    // println(test_result_object_chars_after);
     println(last_hashes[side]);
     println(current_hash);
     println("Test-Inputs done");
@@ -1130,7 +1205,7 @@ fn test_calc_fireball_ff() {
     // let (serialized_actions_valid, serialized_actions_input) = ;
     let  (turn_calc_valid, serialized_characters, my_char_actions_after, serialized_obstacles, my_advance_calculated, result_events_calculated, serialized_obstacles_for_enemy) = calculate_turn(
         serialized_chars_input,
-        serialized_char_actions_input,
+        arena_test_action_def_register, //serialized_char_actions_input,
         // get_test_action_register(),
         my_obstacles_serialized_for_me, //obs[side],
         serialize_actions(actor.id, actions),
@@ -1173,3 +1248,40 @@ let my_result_events: [Field; SERIALIZED_EVENTS_ARRAY_SIZE] = serialize_events(m
 // pub fn setup_obstacles(
     
 // )
+
+#[test]
+fn test_calc_turn_0() {
+  let my_chars = 0x2912640000004b03190000006c04142000008a0464000000aa47640b340a;
+  let test_actions = [0x03f00001300314002000000000100300000020000000002000000000000000, 0x02f0000110071020100a000020100a00000020000000002000000000000000, 0x02f0000a3b1901002000000000000801000020000000002000000000000000, 0x023100081b161118120a010018120a01000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0x03f00001300414002000000000100300000020000000002000000000000000, 0x02f0000110071008100a000008100a00000020000000002000000000000000, 0xf000ff1b1c11002000000000000702000020000000002000000000000000, 0xff00ff1b1c1100200e013f00000e013f0020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0x03f00001300314002000000000100300000020000000002000000000000000, 0x02f0000110071018100a000018100a00000020000000002000000000000000, 0x09f0000130060c002000000000200000000020000000002000000000000000, 0xf00001100610001005000100100500010020000000002000000000000000, 0xf00001301c0100100d000000100d00000020000000002000000000000000, 0x0bf00001100c00002000000000200000000010040a00002000000000000000, 0x03f00001300414002000000000100300000020000000002000000000000000, 0x02f0000110061028100a000028100a00000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0x03f00001300414002000000000100300000020000000002000000000000000, 0x02f0000110071010100a000010100a00000020000000002000000000000000, 0xf000071b1611002000000000000705000020000000002000000000000000, 0x6300061b161164150a020164150a02010020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000]; //.map(|a|a.to_be_bytes());
+  let my_obstacles = [0x62c80162c80362c80462c80563c80564c80565c80567c8000000000000,0x0467c80367c80167c80067c80760c80761c80762c80763c8000000000000,0x0764c80765c80678ff0778ff0579ff0679ff0779ff0879ff000000000000];
+  let my_actions = [0x01000a02030010030000ffff0000ffff000000000000000000000000000000];
+  let move = 0;
+  let enemy_advance = 0;
+  let enemy_objects = [0, 0, 0, 0];
+  let enemy_events = [0x04ffff0000000004ffff0000000004ffff0000000004ffff000000000000];
+
+  let result = calculate_turn(my_chars, test_actions, my_obstacles, my_actions, move, enemy_advance, enemy_objects, enemy_events);
+
+  assert(result.0);
+}
+
+fn test_turn_0() {
+  let secret = 0x075bcd15;
+  let my_chars_input = 0x2912640000004b03190000006c04142000008a0464000000aa47640b340a;
+  let test_actions = [0x03f00001300314002000000000100300000020000000002000000000000000, 0x02f0000110071020100a000020100a00000020000000002000000000000000, 0x02f0000a3b1901002000000000000801000020000000002000000000000000, 0x023100081b161118120a010018120a01000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0x03f00001300414002000000000100300000020000000002000000000000000, 0x02f0000110071008100a000008100a00000020000000002000000000000000, 0xf000ff1b1c11002000000000000702000020000000002000000000000000, 0xff00ff1b1c1100200e013f00000e013f0020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0x03f00001300314002000000000100300000020000000002000000000000000, 0x02f0000110071018100a000018100a00000020000000002000000000000000, 0x09f0000130060c002000000000200000000020000000002000000000000000, 0xf00001100610001005000100100500010020000000002000000000000000, 0xf00001301c0100100d000000100d00000020000000002000000000000000, 0x0bf00001100c00002000000000200000000010040a00002000000000000000, 0x03f00001300414002000000000100300000020000000002000000000000000, 0x02f0000110061028100a000028100a00000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0x03f00001300414002000000000100300000020000000002000000000000000, 0x02f0000110071010100a000010100a00000020000000002000000000000000, 0xf000071b1611002000000000000705000020000000002000000000000000, 0x6300061b161164150a020164150a02010020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000, 0xf000ff000001002000000000200000000020000000002000000000000000]; //.map(|a|a.to_be_bytes());
+  let my_obstacles = [0x62c80162c80362c80462c80563c80564c80565c80567c8000000000000,0x0467c80367c80167c80067c80760c80761c80762c80763c8000000000000,0x0764c80765c80678ff0778ff0579ff0679ff0779ff0879ff000000000000];
+  let my_actions = [0x01000a02030010030000ffff0000ffff000000000000000000000000000000];
+  let move = 0;
+  let enemy_advance = 0;
+  let enemy_objects = [0,0,0,0];
+  let enemy_events = [0x04ffff0000000004ffff0000000004ffff0000000004ffff000000000000];
+  let my_result_advance = 0x12;
+  let my_result_objects = [0,0,0,0];
+  let my_result_events = [0xffff0000000000ffff0000000000ffff0000000000ffff000000000000];
+  let initial_hash = 0x07a86579c9d2236bd1c02ced0660e9280e1d9a73146a0c9c8e4d8e27d64d6565;
+  let final_hash = 0x2c7492b9fc2adae465ec974b512f12b29b486e7c268cca2c304330eac57dd680;
+
+  let result = turn(secret, my_chars_input, test_actions, my_obstacles, my_actions, move, enemy_advance, enemy_objects, enemy_events, my_result_advance, my_result_events, my_result_objects, initial_hash, final_hash);
+
+  assert(result);
+}

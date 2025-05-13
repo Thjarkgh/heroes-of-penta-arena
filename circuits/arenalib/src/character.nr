@@ -35,6 +35,46 @@ global class_energy_per_shoot: [u8; 6] = [ 0, 6, 255, 255, 255, 255 ];
 
 // global trap_resistances: [u16; 8] = [ 0,  75, 100, 50,  75, 90, 5, 0]; //,  255, 255, 255, 255, 255, 255, 255, 255 ]; // Trap vs dummy, archer, ritualist, thief, knight, mage
 
+pub fn get_test_action_register() -> SerializedArenaActionDefinitions {
+  let action_builder = arena_action_def_builder;
+     [
+            std::field::bytes32_to_field(action_builder.build_move_action(class_energy_per_move[ARCHER])),
+            std::field::bytes32_to_field(action_builder.build_attack_action(class_energy_per_attack[ARCHER], ATTACK_MELEE, 1, class_damage[0][ARCHER])),
+            std::field::bytes32_to_field(action_builder.build_draw_action(3, class_energy_per_draw[ARCHER], 10, ARCHER)),
+            std::field::bytes32_to_field(action_builder.build_shoot_action(3, class_energy_per_shoot[ARCHER], ATTACK_RANGED, 8, class_damage[1][ARCHER], 2, MIN_DRAW_ROUNDS_FOR_SHOOT, MAX_DRAW_ROUNDS_FOR_SHOOT)), // arche),
+            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
+            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
+            
+            std::field::bytes32_to_field(action_builder.build_move_action(class_energy_per_move[RITUALIST])),
+            std::field::bytes32_to_field(action_builder.build_attack_action(class_energy_per_attack[RITUALIST], ATTACK_MELEE, 1, class_damage[0][RITUALIST])),
+            std::field::bytes32_to_field(action_builder.build_cast_action(3, class_energy_per_cast[RITUALIST], RITUALIST, 255)),
+            std::field::bytes32_to_field(action_builder.build_ritual_action(3, class_energy_per_ritual[RITUALIST], RITUAL_ROUNDS_FOR_WIN, WIN_BY_RITUAL)),
+            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
+            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
+
+            std::field::bytes32_to_field(action_builder.build_move_action(class_energy_per_move[ROGUE])),
+            std::field::bytes32_to_field(action_builder.build_attack_action(class_energy_per_attack[ROGUE], ATTACK_MELEE, 1, class_damage[0][ROGUE])),
+            std::field::bytes32_to_field(action_builder.build_sneak_action(class_energy_per_sneak[ROGUE])),
+            std::field::bytes32_to_field(action_builder.build_search_action(class_energy_per_search[ROGUE], 1)),
+            std::field::bytes32_to_field(action_builder.build_disarm_trap_action(class_energy_per_disarm[ROGUE], 1)),
+            std::field::bytes32_to_field(action_builder.build_set_trap_action(class_energy_per_disarm[ROGUE], 1, ADD_OBSTACLE, TRAP)),
+
+            std::field::bytes32_to_field(action_builder.build_move_action(class_energy_per_move[KNIGHT])),
+           std::field::bytes32_to_field( action_builder.build_attack_action(class_energy_per_attack[KNIGHT], ATTACK_MELEE, 1, class_damage[0][KNIGHT])),
+            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
+            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
+            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
+            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
+
+            std::field::bytes32_to_field(action_builder.build_move_action(class_energy_per_move[MAGE])),
+            std::field::bytes32_to_field(action_builder.build_attack_action(class_energy_per_attack[MAGE], ATTACK_MELEE, 1, class_damage[0][MAGE])),
+            std::field::bytes32_to_field(action_builder.build_cast_action(3, class_energy_per_cast[MAGE], MAGE, 7)),
+            std::field::bytes32_to_field(action_builder.build_evocation_action(3, class_energy_per_cast[MAGE], ATTACK_FIREBALL, 6, 1,class_damage[2][MAGE], 5, MIN_FIREBALL_ROUNDS_FOR_CAST, MAX_FIREBALL_ROUNDS_FOR_CAST)),
+            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
+            std::field::bytes32_to_field(action_builder.build_wait_action_def())
+        ]
+}
+
 
 //global x: ActionDefinition = build_set_trap_action(1 as u8, 1 as u8);
 // TODO: move to character!
@@ -144,42 +184,3 @@ global class_energy_per_shoot: [u8; 6] = [ 0, 6, 255, 255, 255, 255 ];
 //     ])
 // }
 
-pub fn get_test_action_register() -> SerializedArenaActionDefinitions {
-  let action_builder = arena_action_def_builder;
-     [
-            std::field::bytes32_to_field(action_builder.build_move_action(class_energy_per_move[ARCHER])),
-            std::field::bytes32_to_field(action_builder.build_attack_action(class_energy_per_attack[ARCHER], ATTACK_MELEE, 1, class_damage[0][ARCHER])),
-            std::field::bytes32_to_field(action_builder.build_draw_action(3, class_energy_per_draw[ARCHER], 10, ARCHER)),
-            std::field::bytes32_to_field(action_builder.build_shoot_action(3, class_energy_per_shoot[ARCHER], ATTACK_RANGED, 8, class_damage[1][ARCHER], 2, MIN_DRAW_ROUNDS_FOR_SHOOT, MAX_DRAW_ROUNDS_FOR_SHOOT)), // arche),
-            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
-            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
-            
-            std::field::bytes32_to_field(action_builder.build_move_action(class_energy_per_move[RITUALIST])),
-            std::field::bytes32_to_field(action_builder.build_attack_action(class_energy_per_attack[RITUALIST], ATTACK_MELEE, 1, class_damage[0][RITUALIST])),
-            std::field::bytes32_to_field(action_builder.build_cast_action(3, class_energy_per_cast[RITUALIST], RITUALIST, 255)),
-            std::field::bytes32_to_field(action_builder.build_ritual_action(3, class_energy_per_ritual[RITUALIST], RITUAL_ROUNDS_FOR_WIN, WIN_BY_RITUAL)),
-            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
-            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
-
-            std::field::bytes32_to_field(action_builder.build_move_action(class_energy_per_move[ROGUE])),
-            std::field::bytes32_to_field(action_builder.build_attack_action(class_energy_per_attack[ROGUE], ATTACK_MELEE, 1, class_damage[0][ROGUE])),
-            std::field::bytes32_to_field(action_builder.build_sneak_action(class_energy_per_sneak[ROGUE])),
-            std::field::bytes32_to_field(action_builder.build_search_action(class_energy_per_search[ROGUE], 1)),
-            std::field::bytes32_to_field(action_builder.build_disarm_trap_action(class_energy_per_disarm[ROGUE], 1)),
-            std::field::bytes32_to_field(action_builder.build_set_trap_action(class_energy_per_disarm[ROGUE], 1, ADD_OBSTACLE, TRAP)),
-
-            std::field::bytes32_to_field(action_builder.build_move_action(class_energy_per_move[KNIGHT])),
-           std::field::bytes32_to_field( action_builder.build_attack_action(class_energy_per_attack[KNIGHT], ATTACK_MELEE, 1, class_damage[0][KNIGHT])),
-            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
-            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
-            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
-            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
-
-            std::field::bytes32_to_field(action_builder.build_move_action(class_energy_per_move[MAGE])),
-            std::field::bytes32_to_field(action_builder.build_attack_action(class_energy_per_attack[MAGE], ATTACK_MELEE, 1, class_damage[0][MAGE])),
-            std::field::bytes32_to_field(action_builder.build_cast_action(3, class_energy_per_cast[MAGE], MAGE, 7)),
-            std::field::bytes32_to_field(action_builder.build_evocation_action(3, class_energy_per_cast[MAGE], ATTACK_FIREBALL, 6, 1,class_damage[2][MAGE], 5, MIN_FIREBALL_ROUNDS_FOR_CAST, MAX_FIREBALL_ROUNDS_FOR_CAST)),
-            std::field::bytes32_to_field(action_builder.build_wait_action_def()),
-            std::field::bytes32_to_field(action_builder.build_wait_action_def())
-        ]
-}
