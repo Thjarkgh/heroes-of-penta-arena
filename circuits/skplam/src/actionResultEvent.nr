@@ -71,7 +71,7 @@ pub struct ActionResultEvent {
   pub register: [u8; 32]
 }
 impl ActionResultEvent {
-  #[derive_action_def_result_event_struct_new]
+  //#[derive_action_def_result_event_struct_new]
   pub fn new() -> ActionResultEvent {
     ActionResultEvent { register: &[].as_array() }
   }

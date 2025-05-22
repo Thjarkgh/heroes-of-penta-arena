@@ -51,7 +51,7 @@ pub struct ActionPreCalcEffect {
   pub register: [u8; 32]
 }
 impl ActionPreCalcEffect {
-  #[derive_action_def_pre_calc_effect_struct_new]
+  //#[derive_action_def_pre_calc_effect_struct_new]
   pub fn new() -> ActionPreCalcEffect {
     ActionPreCalcEffect { register: &[].as_array() }
   }

@@ -51,7 +51,7 @@ pub struct ActionRequirement {
   pub register: [u8; 32]
 }
 impl ActionRequirement {
-  #[derive_action_def_requirements_struct_new()]
+  //#[derive_action_def_requirements_struct_new()]
   pub fn new() -> ActionRequirement {
     ActionRequirement { register: &[].as_array() }
   }
