@@ -221,7 +221,7 @@ const SetupPhaseUI: React.FC<SetupPhaseUIProps> = ({
     const [selectedCharacterIndex, setSelectedCharacterIndex] = useState<number | null>(null); // Index from initialCharacters
     const [nextObstacleId, setNextObstacleId] = useState(0);
 
-    const characterModelPath = '/models/enemy_character.fbx'; // Your GLB/FBX model
+    const characterModelPath = '/models/knight.glb'; //enemy_character.fbx'; // Your GLB/FBX model
     const wallModelPath = '/models/wall.fbx'; // Your wall model
 
     // Create a 2D array to track occupied cells

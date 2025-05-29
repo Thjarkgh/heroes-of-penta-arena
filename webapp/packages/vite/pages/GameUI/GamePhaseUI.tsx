@@ -82,8 +82,8 @@ const GamePhaseUI: React.FC<GamePhaseUIProps> = ({
     const [performableActionMap, setPerformableActionMap] = useState<string[][][] | null>(null); // [[[u8; WIDTH]; HEIGHT]; MAX_ACTIONS_PER_CHARACTER + 1]
     const [maxVisibleX, setMaxVisibleX] = useState(0);
 
-    const characterModelPath = '/models/enemy_character.fbx'; // Your GLB/FBX model
-    const enemyCharacterModelPath = '/models/enemy_character.fbx'; // Could be same model with different texture/color
+    const characterModelPath = '/models/knight.glb'; //.fbx'; // Your GLB/FBX model
+    const enemyCharacterModelPath = '/models/knight.glb'; //enemy_character.fbx'; // Could be same model with different texture/color
     const wallModelPath = '/models/wall.fbx';
 
     // Load textures ONCE at the top level of the component
