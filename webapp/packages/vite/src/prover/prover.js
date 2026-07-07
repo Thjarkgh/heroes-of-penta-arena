@@ -145,24 +145,20 @@ async function initializeOrGetInstance(circuitJson) {
 }
 
 self.addEventListener('message', async (event) => {
-    // IMPORTANT: Validate the origin for security
-    // Replace 'http://localhost:3000' with your actual app's origin
-    // if (event.origin !== 'http://localhost:3000') {
-    //     console.warn(`Message rejected from origin: ${event.origin}`);
-    //     return;
-    // }
+    // The iframe is same-origin with the app; reject anything else.
+    if (event.origin !== self.location.origin) {
+        console.warn(`Prover iframe: message rejected from origin ${event.origin}`);
+        return;
+    }
+    if (!event.data || typeof event.data.type !== 'string') return;
 
     const { type, payload } = event.data;
     console.log(`Prover iframe received message: ${type}`, payload);
 
     if (type === 'generateProof') {
-        const {
-            circuitJson, inputs, abi,
-            // Turn results the parent needs echoed back with the proof so it can
-            // assemble the data package for the opponent (see GameManager.tsx).
-            gamestate_before_hash, gamestate_after_hash,
-            result_events, result_objects, result_advance,
-        } = payload; // circuitId is not needed here
+        // meta is opaque request metadata (player, move number) echoed back so
+        // the parent can route the result without relying on its own state.
+        const { circuitJson, inputs, abi, meta } = payload; // circuitId is not needed here
         const start = Date.now();
 
         try {
@@ -201,13 +197,15 @@ self.addEventListener('message', async (event) => {
                         proof: `0x${proofHex}`,
                         publicInputs: publicInputsArray, // Send as array
                         // publicInputs: Object.fromEntries(proofData.publicInputs) // Alternative: Send as object
-                        // Echo the turn results back so the parent can build PlayerTurnData
-                        gamestate_before_hash,
-                        gamestate_after_hash,
-                        result_events,
-                        result_objects,
-                        result_advance,
+                        // Echo the turn results from the proof inputs themselves (single
+                        // source of truth) so the parent can build PlayerTurnData.
+                        gamestate_before_hash: inputs.gamestate_before_hash,
+                        gamestate_after_hash: inputs.gamestate_after_hash,
+                        result_events: inputs.my_result_events,
+                        result_objects: inputs.my_result_objects,
+                        result_advance: inputs.my_result_advance,
                     },
+                    meta,
                     provingTime: provingTime
                 }
             }, event.origin); // Use the received origin
@@ -222,6 +220,6 @@ self.addEventListener('message', async (event) => {
     }
 });
 
-// Optional: Signal readiness to the parent window
+// Signal readiness to the parent window (same-origin only)
 console.log("Prover iframe ready.");
-self.parent.postMessage({ type: 'proverReady' }, '*'); // Send to any origin initially, parent should verify
+self.parent.postMessage({ type: 'proverReady' }, self.location.origin);

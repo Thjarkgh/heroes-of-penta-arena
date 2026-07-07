@@ -7,7 +7,10 @@ import { react, hardhat } from '@wagmi/cli/plugins';
 // and is gitignored, so it does not exist on a fresh checkout. Fall back to the
 // local hardhat network with a zero address so `wagmi generate` and type checking
 // still work before the first deployment.
-const deploymentPath = resolve(__dirname, '../../deployment.json');
+// Resolved relative to the working directory (`wagmi generate` runs from this
+// package via the npm script) rather than __dirname, which does not exist in
+// ESM ("type": "module").
+const deploymentPath = resolve(process.cwd(), '../../deployment.json');
 const deployment: { name: string; address: string; networkConfig: { id: number } } =
   existsSync(deploymentPath)
     ? JSON.parse(readFileSync(deploymentPath, 'utf8'))

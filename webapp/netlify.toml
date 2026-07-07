@@ -1,5 +1,8 @@
+# COOP + COEP are required for cross-origin isolation, which the prover needs
+# for SharedArrayBuffer (multi-threaded bb.js proving). "false" is not a valid
+# COEP value and disables isolation entirely.
 [[headers]]
   for = "/*"
   [headers.values]
     Cross-Origin-Opener-Policy = "same-origin"
-    Cross-Origin-Embedder-Policy = "false"
+    Cross-Origin-Embedder-Policy = "require-corp"
