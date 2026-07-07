@@ -119,8 +119,10 @@ async function initializeOrGetInstance(circuitJson) {
     noirInstance = null;
 
     try {
-        // Initialize backend WITH multi-threading
-        const threads = 64; // navigator.hardwareConcurrency || 16; // Use available cores or default
+        // Initialize backend WITH multi-threading, sized to the actual machine.
+        // A hardcoded high thread count heavily oversubscribes small machines and
+        // can stall proof generation entirely.
+        const threads = navigator.hardwareConcurrency || 8;
         console.log(`Initializing UltraHonkBackend with ${threads} threads...`);
         backendInstance = new UltraHonkBackend(bytecode, { threads });
         // await backendInstance.init(); // This initializes WASM and SRS (if needed)
@@ -154,7 +156,13 @@ self.addEventListener('message', async (event) => {
     console.log(`Prover iframe received message: ${type}`, payload);
 
     if (type === 'generateProof') {
-        const { circuitJson, inputs, abi } = payload; // circuitId is not needed here
+        const {
+            circuitJson, inputs, abi,
+            // Turn results the parent needs echoed back with the proof so it can
+            // assemble the data package for the opponent (see GameManager.tsx).
+            gamestate_before_hash, gamestate_after_hash,
+            result_events, result_objects, result_advance,
+        } = payload; // circuitId is not needed here
         const start = Date.now();
 
         try {
@@ -191,8 +199,14 @@ self.addEventListener('message', async (event) => {
                     // Reconstruct the proof object structure your main app expects
                     proofData: {
                         proof: `0x${proofHex}`,
-                        publicInputs: publicInputsArray // Send as array
+                        publicInputs: publicInputsArray, // Send as array
                         // publicInputs: Object.fromEntries(proofData.publicInputs) // Alternative: Send as object
+                        // Echo the turn results back so the parent can build PlayerTurnData
+                        gamestate_before_hash,
+                        gamestate_after_hash,
+                        result_events,
+                        result_objects,
+                        result_advance,
                     },
                     provingTime: provingTime
                 }

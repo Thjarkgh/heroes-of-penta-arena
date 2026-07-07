@@ -21,7 +21,7 @@ As a game engine, SKPL can be used for basically any ZK task that is turn-based,
 
 circuits: This is where the SKPL Engine is at home and all the Noir magic is happening
 mobile: This is a small demo with SKPL Engine use within noir_android - however, due to noir_android stability issues, this is not fully functional at the moment.
-webapp: This is a small demo with SKPL Engine use within a noir.js powered website. For the Noirhack hackathon, there unfortunately was not enough time to finish it..
+webapp: This is a small demo with SKPL Engine use within a noir.js powered website. It supports a hot-seat 1v1 flow: both players place their characters and obstacles, take turns performing actions, and each turn ends with a client-side ZK proof generated in a dedicated prover iframe. To try it, run `npm install` and `npm run dev` inside `webapp/`.
 
 ## How does it work?
 
@@ -169,8 +169,8 @@ The resultEvent is here mostly for the UI so you can display effects.
 Once all Actions have been defined, you can start with the proof generation.
 For this, you will first need to serialize your inputs:
 ```
-const [my_chars_input_serialized_valid, my_chars_input_serialized] = await skpl.serialize_chars(my_chars);
-const [my_obstacles_input_serialized_valid, my_obstacles_input_serialized] = await skpl.serialize_my_obstacles_for_me(myObstacles);
+const [my_chars_input_serialized, my_char_actions_input_serialized] = await skpl.serialize_chars(my_chars);
+const my_obstacles_input_serialized = await skpl.serialize_my_obstacles_for_me(myObstacles);
 
 ```
 

@@ -20,12 +20,15 @@ const toHex = (x: number): string => {
 };
 
 
+// Default positions inside the 0-9 setup grid. Positions must be unique:
+// duplicates get skipped as placement conflicts, which would leave fewer than
+// maxChars placed and make it impossible to finish the setup phase.
 const defaultCharPositionsP1 = [
-  { x: 9, y: 2 }, // Corresponds to my_chars[0] from simulation
-  { x: 9, y: 3 }, // my_chars[1] - NOTE: x=11 is outside 0-9 grid! Adjust if needed for setup UI. Let's use 9.
-  { x: 9, y: 4 }, // my_chars[2] - Outside 0-9. Let's use 8.
-  { x: 9, y: 4 }, // my_chars[3] - Outside 0-9. Let's use 7.
-  { x: 8, y: 7 }, // my_chars[4] - Outside 0-9. Let's use 6.
+  { x: 9, y: 2 }, // my_chars[0]
+  { x: 9, y: 3 }, // my_chars[1]
+  { x: 9, y: 4 }, // my_chars[2]
+  { x: 8, y: 4 }, // my_chars[3]
+  { x: 8, y: 7 }, // my_chars[4]
 ];
 // This needs the *full* list of 24 default obstacles from your simulation
 const defaultObstacleDataP1 = [

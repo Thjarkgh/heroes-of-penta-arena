@@ -33,5 +33,5 @@ export async function skp(secret: Field, my_chars_input: Field, my_char_actions:
   const program = new Noir(skp_circuit);
   const args: InputMap = { secret, my_chars_input, my_char_actions, my_obstacles_input, actions, move, enemy_advance, enemy_objects, enemy_events, my_result_advance, my_result_objects, my_result_events, gamestate_before_hash, gamestate_after_hash };
   const { returnValue } = await program.execute(args, foreignCallHandler);
-  return returnValue as null;
+  return returnValue as unknown as null;
 }

@@ -15,8 +15,9 @@ import {
 } from '../../lib/noir';
 
 
-const isDev = true; //import.meta.env.DEV;
-const proverHtmlSrc = isDev ? '/src/prover/prover.html' : '/prover.html';
+// The prover iframe page. Vite keeps the rollup input path in the build output
+// (dist/src/prover/prover.html), so the URL is the same in dev and production.
+const proverHtmlSrc = '/src/prover/prover.html';
 
 // --- Circuit JSON Imports (for main thread verification setup) ---
 import circuitProof from '../../../../../circuits/circuit/target/skp.json';
@@ -155,9 +156,11 @@ const GameManager: React.FC = () => {
                     setGeneratingProof(false);
                     if (payload?.proofData) {
                         setStatusMessage(`Proof generated in ${payload.provingTime || '?'} ms.`);
+                        // publicInputs arrives as a flat string[] from the prover iframe
+                        const publicInputsArray: string[] = payload.proofData.publicInputs || [];
                         const newTurnData: PlayerTurnData = {
                             proof: payload.proofData.proof,
-                            publicInputs: new Map(payload.proofData.publicInputs || []),
+                            publicInputs: new Map(publicInputsArray.map((value, index) => [index, value])),
                             gamestate_before_hash: payload.proofData.gamestate_before_hash, // Prover needs to send these back
                             gamestate_after_hash: payload.proofData.gamestate_after_hash,   // Prover needs to send these back
                             result_events: payload.proofData.result_events,                 // Prover needs to send these back
@@ -182,7 +185,9 @@ const GameManager: React.FC = () => {
         window.addEventListener('message', handleMessage);
         const timer = setTimeout(() => { if (!proverReady) console.warn("Prover not ready"); }, 5000);
         return () => { window.removeEventListener('message', handleMessage); clearTimeout(timer); };
-    }, [proverReady, currentMoveNumber]); // Added currentMoveNumber
+        // gamePhase must be a dependency: handleProofGenerated reads it, and without
+        // re-subscribing the handler would see a stale phase when the proof arrives.
+    }, [proverReady, currentMoveNumber, gamePhase]);
 
     // useEffect to load data when the component mounts
 useEffect(() => {
@@ -227,10 +232,13 @@ useEffect(() => {
 
     // --- Setup Verification Circuit (main thread) ---
     useEffect(() => {
+        // Track the id locally: the state variable would still be null in this
+        // effect's cleanup closure, so the circuit would never get cleared.
+        let id: string | null = null;
         setupCircuit(circuitProof as unknown as Circuit)
-            .then(id => setCircuitProofId(id))
+            .then(circuitId => { id = circuitId; setCircuitProofId(circuitId); })
             .catch(err => setErrorMessage(`Failed to setup verification circuit: ${err}`));
-        return () => { if (circuitProofId) clearCircuit(circuitProofId); };
+        return () => { if (id) clearCircuit(id); };
     }, []); // Empty dependency array - run once
 
     // --- Handler for when setup is complete for a player ---
@@ -298,7 +306,7 @@ useEffect(() => {
             );
 
             // Serialize chosen actions for the proof
-            const actorId = (currentMoveNumber / 2) % MAX_CHARS_PER_PLAYER;
+            const actorId = Math.floor(currentMoveNumber / 2) % MAX_CHARS_PER_PLAYER;
             const serializedTurnActions = await serializeActions(actorId, finalActions); // Generic serializer
 
             // 1. Calculate final turn results using Noir (should match local calculations)
@@ -368,6 +376,10 @@ useEffect(() => {
                     result_advance: finalAdvance,
                 }
             }, '*');
+
+            // Move to the prove phase so the proofGenerated handler can tell
+            // whose proof just finished and switch players accordingly.
+            setGamePhase(currentPlayer === 1 ? GamePhase.GAME_P1_PROVE : GamePhase.GAME_P2_PROVE);
 
         } catch (err) {
             setGeneratingProof(false);
@@ -527,7 +539,6 @@ useEffect(() => {
             {statusMessage && !generatingProof && <div className="status-message">{statusMessage}</div>}
             {generatingProof && <div className="status-message">Generating proof... {statusMessage}</div>}
 
-            {/* TODO: Add UI for displaying dataForOpponent to copy/paste in hot-seat mode */}
             {dataForOpponent && (
                 <div className="opponent-data-transfer">
                     <h3>Player {dataForOpponent.move_number % 2 === 0 ? 1 : 2} to Player {dataForOpponent.move_number % 2 === 0 ? 2 : 1}:</h3>
