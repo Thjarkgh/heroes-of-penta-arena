@@ -1,3 +1,4 @@
+import '../../polyfills';
 // @ts-ignore
 import acvm from '@noir-lang/acvm_js/web/acvm_js_bg.wasm?url';
 // @ts-ignore
@@ -154,6 +155,25 @@ self.addEventListener('message', async (event) => {
 
     const { type, payload } = event.data;
     console.log(`Prover iframe received message: ${type}`, payload);
+
+    if (type === 'warmup') {
+        // Pre-initialize the proving backend (WASM, worker threads, SRS) while the
+        // players are still in the setup phase. This one-time init costs several
+        // seconds and would otherwise be paid on the first "Finish Turn".
+        try {
+            const { backend } = await initializeOrGetInstance(payload.circuitJson);
+            if (typeof backend.instantiate === 'function') {
+                const start = Date.now();
+                await backend.instantiate();
+                console.log(`Prover warmup complete in ${Date.now() - start} ms.`);
+            }
+        } catch (error) {
+            // Warmup is best-effort: a failure here just means the first proof
+            // pays the init cost like before.
+            console.warn('Prover warmup failed:', error);
+        }
+        return;
+    }
 
     if (type === 'generateProof') {
         // meta is opaque request metadata (player, move number) echoed back so

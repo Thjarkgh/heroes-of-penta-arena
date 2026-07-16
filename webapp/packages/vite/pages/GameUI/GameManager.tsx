@@ -156,6 +156,14 @@ const GameManager: React.FC = () => {
                 case 'proverReady':
                     setProverReady(true);
                     setStatusMessage('Prover ready.');
+                    // Kick off backend initialization (WASM, worker threads, SRS)
+                    // right away, while the players are still placing their pieces.
+                    // Without this the first "Finish Turn" pays several seconds of
+                    // one-time init on top of the actual proof.
+                    iframeRef.current?.contentWindow?.postMessage({
+                        type: 'warmup',
+                        payload: { circuitJson: circuitProof as Circuit },
+                    }, window.location.origin);
                     break;
                 case 'statusUpdate':
                     setStatusMessage(payload?.message || 'Status...');

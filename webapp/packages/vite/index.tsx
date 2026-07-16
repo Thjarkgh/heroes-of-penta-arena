@@ -1,3 +1,4 @@
+import './polyfills';
 // @ts-ignore
 import acvm from '@noir-lang/acvm_js/web/acvm_js_bg.wasm?url';
 // @ts-ignore
