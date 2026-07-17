@@ -1,3 +1,4 @@
+import '../../polyfills';
 // @ts-ignore
 import acvm from '@noir-lang/acvm_js/web/acvm_js_bg.wasm?url';
 // @ts-ignore
@@ -119,8 +120,10 @@ async function initializeOrGetInstance(circuitJson) {
     noirInstance = null;
 
     try {
-        // Initialize backend WITH multi-threading
-        const threads = 64; // navigator.hardwareConcurrency || 16; // Use available cores or default
+        // Initialize backend WITH multi-threading, sized to the actual machine.
+        // A hardcoded high thread count heavily oversubscribes small machines and
+        // can stall proof generation entirely.
+        const threads = navigator.hardwareConcurrency || 8;
         console.log(`Initializing UltraHonkBackend with ${threads} threads...`);
         backendInstance = new UltraHonkBackend(bytecode, { threads });
         // await backendInstance.init(); // This initializes WASM and SRS (if needed)
@@ -143,18 +146,39 @@ async function initializeOrGetInstance(circuitJson) {
 }
 
 self.addEventListener('message', async (event) => {
-    // IMPORTANT: Validate the origin for security
-    // Replace 'http://localhost:3000' with your actual app's origin
-    // if (event.origin !== 'http://localhost:3000') {
-    //     console.warn(`Message rejected from origin: ${event.origin}`);
-    //     return;
-    // }
+    // The iframe is same-origin with the app; reject anything else.
+    if (event.origin !== self.location.origin) {
+        console.warn(`Prover iframe: message rejected from origin ${event.origin}`);
+        return;
+    }
+    if (!event.data || typeof event.data.type !== 'string') return;
 
     const { type, payload } = event.data;
     console.log(`Prover iframe received message: ${type}`, payload);
 
+    if (type === 'warmup') {
+        // Pre-initialize the proving backend (WASM, worker threads, SRS) while the
+        // players are still in the setup phase. This one-time init costs several
+        // seconds and would otherwise be paid on the first "Finish Turn".
+        try {
+            const { backend } = await initializeOrGetInstance(payload.circuitJson);
+            if (typeof backend.instantiate === 'function') {
+                const start = Date.now();
+                await backend.instantiate();
+                console.log(`Prover warmup complete in ${Date.now() - start} ms.`);
+            }
+        } catch (error) {
+            // Warmup is best-effort: a failure here just means the first proof
+            // pays the init cost like before.
+            console.warn('Prover warmup failed:', error);
+        }
+        return;
+    }
+
     if (type === 'generateProof') {
-        const { circuitJson, inputs, abi } = payload; // circuitId is not needed here
+        // meta is opaque request metadata (player, move number) echoed back so
+        // the parent can route the result without relying on its own state.
+        const { circuitJson, inputs, abi, meta } = payload; // circuitId is not needed here
         const start = Date.now();
 
         try {
@@ -191,9 +215,17 @@ self.addEventListener('message', async (event) => {
                     // Reconstruct the proof object structure your main app expects
                     proofData: {
                         proof: `0x${proofHex}`,
-                        publicInputs: publicInputsArray // Send as array
+                        publicInputs: publicInputsArray, // Send as array
                         // publicInputs: Object.fromEntries(proofData.publicInputs) // Alternative: Send as object
+                        // Echo the turn results from the proof inputs themselves (single
+                        // source of truth) so the parent can build PlayerTurnData.
+                        gamestate_before_hash: inputs.gamestate_before_hash,
+                        gamestate_after_hash: inputs.gamestate_after_hash,
+                        result_events: inputs.my_result_events,
+                        result_objects: inputs.my_result_objects,
+                        result_advance: inputs.my_result_advance,
                     },
+                    meta,
                     provingTime: provingTime
                 }
             }, event.origin); // Use the received origin
@@ -208,6 +240,6 @@ self.addEventListener('message', async (event) => {
     }
 });
 
-// Optional: Signal readiness to the parent window
+// Signal readiness to the parent window (same-origin only)
 console.log("Prover iframe ready.");
-self.parent.postMessage({ type: 'proverReady' }, '*'); // Send to any origin initially, parent should verify
+self.parent.postMessage({ type: 'proverReady' }, self.location.origin);

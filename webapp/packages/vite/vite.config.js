@@ -67,6 +67,16 @@ export default defineConfig({
     //--- End Alternative ---
   },
 
+  // vite preview must send the same cross-origin-isolation headers as the dev
+  // server, otherwise SharedArrayBuffer is unavailable and the multi-threaded
+  // prover fails when testing the production build locally.
+  preview: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
+  },
+
   // Optional: Define global constants or polyfills if needed
   // define: {
   //   'global': {}, // Provide global for polyfills like Buffer

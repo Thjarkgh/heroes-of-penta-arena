@@ -1,3 +1,4 @@
+import './polyfills';
 // @ts-ignore
 import acvm from '@noir-lang/acvm_js/web/acvm_js_bg.wasm?url';
 // @ts-ignore
@@ -7,17 +8,19 @@ import initACVM from '@noir-lang/acvm_js';
 // @ts-ignore
 await Promise.all([initACVM(fetch(acvm)), initNoirC(fetch(noirc))]);
 
-import React, { ReactNode, useEffect } from 'react';
-import ReactDOM from 'react-dom/client';
 import './App.css';
 import 'react-toastify/dist/ReactToastify.css';
-import { ToastContainer } from 'react-toastify';
-import Component from './components/index.jsx';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { WagmiProvider, createConfig, http } from 'wagmi';
-import { defineChain, createClient } from 'viem';
-import { injected } from 'wagmi/connectors';
-import { networkConfig } from '../../deployment.json';
+
+// On-chain verification via wagmi is currently disabled. The imports below are
+// kept with the disabled code because '../../deployment.json' only exists after
+// running `npx hardhat deploy` (it is gitignored) and would break fresh checkouts.
+// import { ToastContainer } from 'react-toastify';
+// import Component from './components/index.jsx';
+// import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+// import { WagmiProvider, createConfig, http } from 'wagmi';
+// import { defineChain, createClient } from 'viem';
+// import { injected } from 'wagmi/connectors';
+// import { networkConfig } from '../../deployment.json';
 
 // const queryClient = new QueryClient();
 

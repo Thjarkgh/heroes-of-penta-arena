@@ -53,6 +53,9 @@ const toHex = (x: number): string => {
   const h = x.toString(16);
   return `0x${h.length % 2 === 0 ? h : '0' + h}`;
 };
+// Action labels per class. Character.class is 1-based (1=ARCHER, 2=RITUALIST,
+// 3=ROGUE, 4=KNIGHT, 5=MAGE — see circuits/arenalib/src/lib.nr), so index this
+// array with `class - 1`.
 const char_action_labels = [
   ["wait", "move", "attack", "draw bow", "shoot", "dummy", "dummy"],
   ["wait", "move", "attack", "cast ritual", "finish ritual", "dummy", "dummy"],
@@ -60,6 +63,121 @@ const char_action_labels = [
   ["wait", "move", "attack", "dummy", "dummy",  "dummy",  "dummy"],
   ["wait", "move", "attack", "start cast fireball", "finish cast fireball", "dummy", "dummy"]
 ];
+// Character.class values are 1-based; returns the label row for that class.
+const actionLabelsForClass = (charClass: string | number): string[] | undefined =>
+  char_action_labels[Number(charClass) - 1];
+
+// Scene content must live inside <Canvas> because it uses R3F hooks (useTexture).
+interface GameSceneProps {
+    mapWidth: number;
+    mapHeight: number;
+    myCharsThisTurn: Character[];
+    myObsThisTurn: Obstacle[];
+    theirObsThisTurn: Obstacle[];
+    selectedActionIndex: number | null;
+    performableActionMap: string[][][] | null;
+    characterModelPath: string;
+    enemyCharacterModelPath: string;
+    wallModelPath: string;
+    isCellVisible: (x: number, y: number) => boolean;
+    get3DPosition: (x: number, y: number, zOffset?: number) => [number, number, number];
+    handleCellClickForAction: (x: number, y: number) => void;
+}
+
+const GameScene: React.FC<GameSceneProps> = ({
+    mapWidth, mapHeight, myCharsThisTurn, myObsThisTurn, theirObsThisTurn,
+    selectedActionIndex, performableActionMap,
+    characterModelPath, enemyCharacterModelPath, wallModelPath,
+    isCellVisible, get3DPosition, handleCellClickForAction,
+}) => {
+    // Load textures ONCE, inside the Canvas tree
+    const [grassTexture, waterTexture] = useTexture([
+        '/textures/grass.png',
+        '/textures/water.png'
+    ]);
+    const gridConfig = {
+        cellSize: GRID_CELL_SIZE,
+        cellThickness: 1, // Thickness of grid lines
+        cellColor: '#6f6f6f', // Color of grid lines
+        sectionSize: 5, // Every 5 cells, a thicker line
+        sectionThickness: 1.5,
+        sectionColor: '#9d4b4b', // Color of section lines
+        fadeDistance: 25, // Where grid starts fading
+        fadeStrength: 1,
+        followCamera: false, // Keep grid static
+        infiniteGrid: false // Don't extend beyond specified size
+    };
+
+    return (
+        <>
+            <ambientLight intensity={0.7} />
+            <directionalLight position={[0, 10, 5]} intensity={1} />
+            {/* Render the Grid slightly above the ground plane to avoid z-fighting */}
+            <Grid
+                position={[0, 0.01, 0]}
+                args={[mapWidth * GRID_CELL_SIZE, mapHeight * GRID_CELL_SIZE]}
+                {...gridConfig}
+            />
+
+            {/* Game Grid & Fog */}
+            {Array.from({ length: mapHeight }).map((_, rIndex) =>
+                Array.from({ length: mapWidth }).map((_, cIndex) => {
+                    const cellIsVisible = isCellVisible(cIndex, rIndex);
+                    const isTargetable = selectedActionIndex !== null &&
+                        performableActionMap &&
+                        performableActionMap[selectedActionIndex]?.[rIndex]?.[cIndex]?.endsWith("01");
+
+                    // Determine terrain type (grass or water from obstacles)
+                    const ownWater = myObsThisTurn.find(o => Number(o.x) === cIndex && Number(o.y) === rIndex && o.obstacle_type === "0x07");
+                    const theirWater = theirObsThisTurn.find(o => Number(o.x) === cIndex && Number(o.y) === rIndex && o.obstacle_type === "0x07");
+                    const terrainType = (ownWater || theirWater) ? 'water' : 'grass';
+                    const selectedTexture = terrainType === 'water' ? waterTexture : grassTexture;
+
+                    return (
+                        <Plane
+                            key={`game-cell-${rIndex}-${cIndex}`}
+                            args={[GRID_CELL_SIZE, GRID_CELL_SIZE]}
+                            position={get3DPosition(cIndex, rIndex, -0.01)} // Slightly below models
+                            rotation={[-Math.PI / 2, 0, 0]}
+                            onClick={() => selectedActionIndex !== null && cellIsVisible && handleCellClickForAction(cIndex, rIndex)}
+                        >
+                            <meshStandardMaterial
+                                color={!cellIsVisible ? FOG_COLOR : (isTargetable ? 'lightgreen' : 'white')}
+                                map={selectedTexture}
+                                transparent={!cellIsVisible}
+                                opacity={!cellIsVisible ? 0.8 : 1}
+                            />
+                        </Plane>
+                    );
+                })
+            )}
+
+            {/* My Characters */}
+            {myCharsThisTurn.filter(char => isCellVisible(Number(char.x), Number(char.y))).map((char, index) => (
+                <CharacterModel key={`mychar-${char.id || index}`} modelPath={characterModelPath} position={get3DPosition(Number(char.x), Number(char.y), 0.1)} />
+            ))}
+            {/* My Static Obstacles */}
+            {myObsThisTurn.filter(obs => isCellVisible(Number(obs.x), Number(obs.y))).map((obs, index) => (
+                <ObstacleModel key={`myobs-${obs.id || index}`} type={obs.obstacle_type === "0x06" ? 'WALL' : 'WATER'} position={get3DPosition(Number(obs.x), Number(obs.y))} wallModelPath={wallModelPath} />
+            ))}
+
+            {/* Their Visible Objects (Characters and Obstacles) */}
+            {theirObsThisTurn.filter(obs => isCellVisible(Number(obs.x), Number(obs.y))).map((obs, index) => {
+                // Differentiate between enemy character and obstacle based on your data structure
+                const isCharacter = obs.health !== "0xff" && obs.health !== "0xc8"; // Simplistic check; refine based on actual data
+                if (isCharacter) {
+                    return <CharacterModel key={`theirchar-${obs.id || index}`} modelPath={enemyCharacterModelPath} position={get3DPosition(Number(obs.x), Number(obs.y), 0.1)} />;
+                } else {
+                    return <ObstacleModel key={`theirobs-${obs.id || index}`} type={obs.obstacle_type === "0x06" ? 'WALL' : 'WATER'} position={get3DPosition(Number(obs.x), Number(obs.y))} wallModelPath={wallModelPath} />;
+                }
+            })}
+
+            {/* TODO: Display Events (e.g., attack animations, status effects) */}
+
+            <OrbitControls enableRotate={false} mouseButtons={{ LEFT: 0, MIDDLE: 1, RIGHT: 2 }} /> {/* Disable rotation if top-down */}
+        </>
+    );
+};
 const GamePhaseUI: React.FC<GamePhaseUIProps> = ({
     playerNumber, initialMyCharacters, initialMyObstacles,
     generatingProof, // DESTRUCTURE THE PROP
@@ -86,11 +204,10 @@ const GamePhaseUI: React.FC<GamePhaseUIProps> = ({
     const enemyCharacterModelPath = '/models/enemy_character.fbx'; // Could be same model with different texture/color
     const wallModelPath = '/models/wall.fbx';
 
-    // Load textures ONCE at the top level of the component
-    const [grassTexture, waterTexture] = useTexture([
-      '/textures/grass.png', // Ensure these paths are correct relative to your public folder
-      '/textures/water.png'
-  ]);
+    // NOTE: textures are loaded inside <GameScene> below. R3F hooks like
+    // useTexture throw ("Hooks can only be used within the Canvas component!")
+    // when called outside the <Canvas> tree, which crashed the whole game phase.
+
     // --- Initial processing: Apply enemy effects, calculate "before" hash ---
     useEffect(() => {
         const processStartOfTurn = async () => {
@@ -218,22 +335,15 @@ const GamePhaseUI: React.FC<GamePhaseUIProps> = ({
 
         setStatusMessage("Calculating action result...");
         try {
-            // Create the action object
-            // The action_type comes from the actor's definition: actor.actions[selectedActionIndex]
-            // This part of your ABI for Character.actions needs to be known to get the actual action_type
-            // For now, let's assume selectedActionIndex IS the action_type for simplicity if they map directly
-            // Or, you need a mapping: e.g., actor.actions[selectedActionIndex].type
-            const actionDefinition = actor.actions[selectedActionIndex]; // This is likely an array of u8s
-            // The actual 'action_type' is often the first element or derived.
-            // This needs careful mapping based on your `actor.actions` structure.
-            // For now, let's use a placeholder for action_type from char_action_labels logic
-            const charClassIndex = Number(actor.class); // Assuming class is 0-4
-            const actionLabel = char_action_labels[charClassIndex][selectedActionIndex]; // e.g., "move", "attack"
-            // You'll need a mapping from these labels (or directly from actionDefinition) to numeric action_type
-            const numericActionType = selectedActionIndex; // Placeholder - THIS IS LIKELY WRONG, map it correctly
+            // Create the action object.
+            // The action_type is the index into the character's action list: slot 0 is
+            // the built-in WAIT action, slots 1+ are the class's custom ActionDefinitions.
+            // get_performable_actions returns its map with the same indexing, so
+            // selectedActionIndex maps 1:1 to the numeric action_type.
+            const numericActionType = selectedActionIndex;
 
             const newAction = await skpla_new_action(
-                toHex(numericActionType), // THIS NEEDS TO BE THE CORRECT NUMERIC ACTION TYPE
+                toHex(numericActionType),
                 toHex(currentActorId),
                 toHex(targetX),
                 toHex(targetY)
@@ -312,27 +422,13 @@ const GamePhaseUI: React.FC<GamePhaseUIProps> = ({
             return x >= (mapWidth - 1 - maxVisibleX);
         }
     };
-    const gridConfig = {
-      cellSize: GRID_CELL_SIZE,
-      cellThickness: 1, // Thickness of grid lines
-      cellColor: '#6f6f6f', // Color of grid lines
-      sectionSize: 5, // Every 5 cells, a thicker line
-      sectionThickness: 1.5,
-      sectionColor: '#9d4b4b', // Color of section lines
-      fadeDistance: 25, // Where grid starts fading
-      fadeStrength: 1,
-      followCamera: false, // Keep grid static
-      infiniteGrid: false // Don't extend beyond specified size
-  };
-
     return (
         <div className="game-phase">
             <h3>Player {playerNumber} - Turn {currentMoveNumber} - Actor: {currentActorId} - Energy: {currentEnergy}</h3>
             {activeActor && (
                 <div className="action-selector">
                     <h4>Select Action for Character {activeActor.id} (Class: {activeActor.class}):</h4>
-                    {/* Assuming char_action_labels is available globally or passed as prop */}
-                    {char_action_labels[Number(activeActor.class)]?.map((actionName, idx) => (
+                    {actionLabelsForClass(activeActor.class)?.map((actionName, idx) => (
                          actionName !== "dummy" && // Don't show dummy actions
                         <button key={`action-${idx}`} onClick={() => handleActionSelection(idx)}
                                 disabled={selectedActionIndex === idx || performableActionMap === null}>
@@ -341,81 +437,27 @@ const GamePhaseUI: React.FC<GamePhaseUIProps> = ({
                     ))}
                 </div>
             )}
-            {selectedActionIndex !== null && <p>Selected Action: {char_action_labels[Number(activeActor?.class)][selectedActionIndex]}. Click target on map.</p>}
+            {selectedActionIndex !== null && activeActor && <p>Selected Action: {actionLabelsForClass(activeActor.class)?.[selectedActionIndex]}. Click target on map.</p>}
 
 
             <div style={{ height: '500px', width: '100%', border: '1px solid black', position: 'relative' }}>
                 <Canvas camera={{ position: [0, 15, 0.1], fov: 60 }}> {/* Top-downish view */}
                     <Suspense fallback={null}>
-                        <ambientLight intensity={0.7} />
-                        <directionalLight position={[0, 10, 5]} intensity={1} />
-            {/* Render the Grid slightly above the ground plane to avoid z-fighting */}
-            <Grid
-                position={[0, 0.01, 0]} // Adjust Y slightly if needed
-                args={[mapWidth * GRID_CELL_SIZE, mapHeight * GRID_CELL_SIZE]} // Total size based on your grid dimensions
-                {...gridConfig}
-            />
-
-                        {/* Game Grid & Fog */}
-                        {Array.from({ length: mapHeight }).map((_, rIndex) =>
-                            Array.from({ length: mapWidth }).map((_, cIndex) => {
-                                const cellIsVisible = isCellVisible(cIndex, rIndex);
-                                const isTargetable = selectedActionIndex !== null &&
-                                    performableActionMap &&
-                                    performableActionMap[selectedActionIndex]?.[rIndex]?.[cIndex].endsWith("01");
-
-                                // Determine terrain type (grass or water from obstacles)
-
-                                const ownWater = myObsThisTurn.find(o => Number(o.x) === cIndex && Number(o.y) === rIndex && o.obstacle_type === "0x07");
-                                const theirWater = theirObsThisTurn.find(o => Number(o.x) === cIndex && Number(o.y) === rIndex && o.obstacle_type === "0x07");
-                                const terrainType = (ownWater || theirWater) ? 'water' : 'grass';
-                                const selectedTexture = terrainType === 'water' ? waterTexture : grassTexture;
-    
-
-                                return (
-                                    <Plane
-                                        key={`game-cell-${rIndex}-${cIndex}`}
-                                        args={[GRID_CELL_SIZE, GRID_CELL_SIZE]}
-                                        position={get3DPosition(cIndex, rIndex, -0.01)} // Slightly below models
-                                        rotation={[-Math.PI / 2, 0, 0]}
-                                        onClick={() => selectedActionIndex !== null && cellIsVisible && handleCellClickForAction(cIndex, rIndex)}
-                                    >
-                                        <meshStandardMaterial
-                                            color={!cellIsVisible ? FOG_COLOR : (isTargetable ? 'lightgreen' : 'white')}
-                                            map={selectedTexture} // PASS THE PRELOADED TEXTURE
-                                            transparent={!cellIsVisible}
-                                            opacity={!cellIsVisible ? 0.8 : 1}
-                                        />
-                                    </Plane>
-                                );
-                            })
-                        )}
-
-                        {/* My Characters */}
-                        {myCharsThisTurn.filter(char => isCellVisible(Number(char.x), Number(char.y))).map((char, index) => (
-                            <CharacterModel key={`mychar-${char.id || index}`} modelPath={characterModelPath} position={get3DPosition(Number(char.x), Number(char.y), 0.1)} />
-                        ))}
-                        {/* My Static Obstacles */}
-                        {myObsThisTurn.filter(obs => isCellVisible(Number(obs.x), Number(obs.y))).map((obs, index) => (
-                            <ObstacleModel key={`myobs-${obs.id || index}`} type={obs.obstacle_type === "0x06" ? 'WALL' : 'WATER'} position={get3DPosition(Number(obs.x), Number(obs.y))} wallModelPath={wallModelPath}/>
-                        ))}
-
-                        {/* Their Visible Objects (Characters and Obstacles) */}
-                        {theirObsThisTurn.filter(obs => isCellVisible(Number(obs.x), Number(obs.y))).map((obs, index) => {
-                            // Differentiate between enemy character and obstacle based on your data structure
-                            // (e.g., obstacle_type or a different field)
-                            // For now, assume all are obstacles unless a specific 'character' type exists
-                            const isCharacter = obs.health !== "0xff" && obs.health !== "0xc8"; // Simplistic check; refine based on actual data
-                            if (isCharacter) {
-                                return <CharacterModel key={`theirchar-${obs.id || index}`} modelPath={enemyCharacterModelPath} position={get3DPosition(Number(obs.x), Number(obs.y), 0.1)} />;
-                            } else {
-                                return <ObstacleModel key={`theirobs-${obs.id || index}`} type={obs.obstacle_type === "0x06" ? 'WALL' : 'WATER'} position={get3DPosition(Number(obs.x), Number(obs.y))} wallModelPath={wallModelPath} />;
-                            }
-                        })}
-
-                        {/* TODO: Display Events (e.g., attack animations, status effects) */}
-
-                        <OrbitControls enableRotate={false} mouseButtons={{ LEFT: 0, MIDDLE: 1, RIGHT: 2 }} /> {/* Disable rotation if top-down */}
+                        <GameScene
+                            mapWidth={mapWidth}
+                            mapHeight={mapHeight}
+                            myCharsThisTurn={myCharsThisTurn}
+                            myObsThisTurn={myObsThisTurn}
+                            theirObsThisTurn={theirObsThisTurn}
+                            selectedActionIndex={selectedActionIndex}
+                            performableActionMap={performableActionMap}
+                            characterModelPath={characterModelPath}
+                            enemyCharacterModelPath={enemyCharacterModelPath}
+                            wallModelPath={wallModelPath}
+                            isCellVisible={isCellVisible}
+                            get3DPosition={get3DPosition}
+                            handleCellClickForAction={handleCellClickForAction}
+                        />
                     </Suspense>
                 </Canvas>
             </div>

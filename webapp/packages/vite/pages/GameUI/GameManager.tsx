@@ -15,8 +15,9 @@ import {
 } from '../../lib/noir';
 
 
-const isDev = true; //import.meta.env.DEV;
-const proverHtmlSrc = isDev ? '/src/prover/prover.html' : '/prover.html';
+// The prover iframe page. Vite keeps the rollup input path in the build output
+// (dist/src/prover/prover.html), so the URL is the same in dev and production.
+const proverHtmlSrc = '/src/prover/prover.html';
 
 // --- Circuit JSON Imports (for main thread verification setup) ---
 import circuitProof from '../../../../../circuits/circuit/target/skp.json';
@@ -135,11 +136,19 @@ const GameManager: React.FC = () => {
     // Circuit IDs for main thread (e.g., verification)
     const [circuitProofId, setCircuitProofId] = useState<string | null>(null);
 
+    // Keep the latest handleProofGenerated reachable from the (stable) message
+    // listener without re-subscribing on every state change and without any
+    // stale-closure risk.
+    const handleProofGeneratedRef = useRef<(turnData: PlayerTurnData, player: 1 | 2) => void>(() => {});
+
     // --- Prover Iframe Communication (Copied & Adapted from SkpProofComponent) ---
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
             const expectedOrigin = window.location.origin;
             if (event.origin !== expectedOrigin) return;
+            // Only accept messages from our own prover iframe: same-origin pages
+            // could otherwise spoof prover results.
+            if (event.source !== iframeRef.current?.contentWindow) return;
             if (!event.data || typeof event.data.type !== 'string') return;
 
             const { type, payload } = event.data;
@@ -147,27 +156,40 @@ const GameManager: React.FC = () => {
                 case 'proverReady':
                     setProverReady(true);
                     setStatusMessage('Prover ready.');
+                    // Kick off backend initialization (WASM, worker threads, SRS)
+                    // right away, while the players are still placing their pieces.
+                    // Without this the first "Finish Turn" pays several seconds of
+                    // one-time init on top of the actual proof.
+                    iframeRef.current?.contentWindow?.postMessage({
+                        type: 'warmup',
+                        payload: { circuitJson: circuitProof as Circuit },
+                    }, window.location.origin);
                     break;
                 case 'statusUpdate':
                     setStatusMessage(payload?.message || 'Status...');
                     break;
                 case 'proofGenerated':
                     setGeneratingProof(false);
-                    if (payload?.proofData) {
+                    // meta is the request metadata (player, move_number) echoed by the
+                    // prover, so the transition does not depend on React state captured
+                    // when the proof was requested.
+                    if (payload?.proofData && payload?.meta) {
                         setStatusMessage(`Proof generated in ${payload.provingTime || '?'} ms.`);
+                        // publicInputs arrives as a flat string[] from the prover iframe
+                        const publicInputsArray: string[] = payload.proofData.publicInputs || [];
                         const newTurnData: PlayerTurnData = {
                             proof: payload.proofData.proof,
-                            publicInputs: new Map(payload.proofData.publicInputs || []),
-                            gamestate_before_hash: payload.proofData.gamestate_before_hash, // Prover needs to send these back
-                            gamestate_after_hash: payload.proofData.gamestate_after_hash,   // Prover needs to send these back
-                            result_events: payload.proofData.result_events,                 // Prover needs to send these back
-                            result_objects: payload.proofData.result_objects,               // Prover needs to send these back
-                            result_advance: payload.proofData.result_advance,               // Prover needs to send these back
-                            move_number: currentMoveNumber,
+                            publicInputs: new Map(publicInputsArray.map((value, index) => [index, value])),
+                            gamestate_before_hash: payload.proofData.gamestate_before_hash,
+                            gamestate_after_hash: payload.proofData.gamestate_after_hash,
+                            result_events: payload.proofData.result_events,
+                            result_objects: payload.proofData.result_objects,
+                            result_advance: payload.proofData.result_advance,
+                            move_number: payload.meta.move_number,
                         };
                         setDataForOpponent(newTurnData);
-                        // Transition to next phase (e.g., switch player)
-                        handleProofGenerated(newTurnData);
+                        // Transition to next phase (switch player)
+                        handleProofGeneratedRef.current(newTurnData, payload.meta.player);
                     } else {
                       console.error("Received proofGenerated message with invalid payload:", payload);
                       setErrorMessage("Internal error: Invalid proof data received.");
@@ -176,13 +198,18 @@ const GameManager: React.FC = () => {
                 case 'proofError':
                     setGeneratingProof(false);
                     setErrorMessage(`Prover Error: ${payload?.message || 'Unknown'}`);
+                    // Drop back to the action phase so the player can retry
+                    // instead of being stuck on the proving screen.
+                    setGamePhase(prev =>
+                        prev === GamePhase.GAME_P1_PROVE ? GamePhase.GAME_P1_ACTION :
+                        prev === GamePhase.GAME_P2_PROVE ? GamePhase.GAME_P2_ACTION : prev);
                     break;
             }
         };
         window.addEventListener('message', handleMessage);
         const timer = setTimeout(() => { if (!proverReady) console.warn("Prover not ready"); }, 5000);
         return () => { window.removeEventListener('message', handleMessage); clearTimeout(timer); };
-    }, [proverReady, currentMoveNumber]); // Added currentMoveNumber
+    }, [proverReady]);
 
     // useEffect to load data when the component mounts
 useEffect(() => {
@@ -227,10 +254,22 @@ useEffect(() => {
 
     // --- Setup Verification Circuit (main thread) ---
     useEffect(() => {
+        // Track the id locally: the state variable would still be null in this
+        // effect's cleanup closure, so the circuit would never get cleared.
+        // The disposed flag covers setup resolving after unmount.
+        let disposed = false;
+        let id: string | null = null;
         setupCircuit(circuitProof as unknown as Circuit)
-            .then(id => setCircuitProofId(id))
-            .catch(err => setErrorMessage(`Failed to setup verification circuit: ${err}`));
-        return () => { if (circuitProofId) clearCircuit(circuitProofId); };
+            .then(circuitId => {
+                if (disposed) { clearCircuit(circuitId); return; }
+                id = circuitId;
+                setCircuitProofId(circuitId);
+            })
+            .catch(err => { if (!disposed) setErrorMessage(`Failed to setup verification circuit: ${err}`); });
+        return () => {
+            disposed = true;
+            if (id) clearCircuit(id);
+        };
     }, []); // Empty dependency array - run once
 
     // --- Handler for when setup is complete for a player ---
@@ -298,7 +337,7 @@ useEffect(() => {
             );
 
             // Serialize chosen actions for the proof
-            const actorId = (currentMoveNumber / 2) % MAX_CHARS_PER_PLAYER;
+            const actorId = Math.floor(currentMoveNumber / 2) % MAX_CHARS_PER_PLAYER;
             const serializedTurnActions = await serializeActions(actorId, finalActions); // Generic serializer
 
             // 1. Calculate final turn results using Noir (should match local calculations)
@@ -353,25 +392,31 @@ useEffect(() => {
                 gamestate_after_hash: gamestateAfterHash,
             };
 
+            // Enter the prove phase before handing off to the prover so the UI
+            // state is consistent no matter how fast the proof comes back.
+            setGamePhase(currentPlayer === 1 ? GamePhase.GAME_P1_PROVE : GamePhase.GAME_P2_PROVE);
+
+            // The payload contains the secret and other private witness data, so
+            // target our own origin explicitly instead of '*'.
             iframeRef.current.contentWindow.postMessage({
                 type: 'generateProof',
                 payload: {
                     circuitJson: circuitProof as Circuit,
                     inputs: proofArgs,
                     abi: circuitProof.abi as Circuit["abi"],
-                    // Send back these calculated values so they are part of the PlayerTurnData
-                    // (or recalculate them in the iframe if proofArgs are slightly different for prover)
-                    gamestate_before_hash: gamestateBeforeHash,
-                    gamestate_after_hash: gamestateAfterHash,
-                    result_events: finalSerEvents,
-                    result_objects: finalSerObjects,
-                    result_advance: finalAdvance,
+                    // Request metadata, echoed back with the proof. The turn results
+                    // themselves (hashes, events, objects, advance) are already part
+                    // of `inputs` and the prover echoes them from there.
+                    meta: { player: currentPlayer, move_number: currentMoveNumber },
                 }
-            }, '*');
+            }, window.location.origin);
 
         } catch (err) {
             setGeneratingProof(false);
             setErrorMessage(`Error in proving phase: ${err}`);
+            // Return to the action phase so the player is not stuck on the
+            // "Generating proof" screen after a failure.
+            setGamePhase(currentPlayer === 1 ? GamePhase.GAME_P1_ACTION : GamePhase.GAME_P2_ACTION);
         }
     }, [
         gamePhase, currentMoveNumber, proverReady, iframeRef,
@@ -381,12 +426,14 @@ useEffect(() => {
 
 
     // --- Handler for when a proof is generated ---
-    const handleProofGenerated = (turnData: PlayerTurnData) => {
-        setStatusMessage(`Player ${gamePhase === GamePhase.GAME_P1_PROVE ? 1 : 2} turn ${turnData.move_number} complete. Proof generated. Switching players.`);
+    // `player` comes from the request metadata echoed by the prover, so the
+    // decision does not depend on the gamePhase captured in a closure.
+    const handleProofGenerated = (turnData: PlayerTurnData, player: 1 | 2) => {
+        setStatusMessage(`Player ${player} turn ${turnData.move_number} complete. Proof generated. Switching players.`);
         // Store the results that become the *next* player's inputs
         // This also becomes the *current* player's "after" state for their *next* turn's "before" hash.
 
-        if (gamePhase === GamePhase.GAME_P1_PROVE) {
+        if (player === 1) {
             // Player 1 finished, set up for Player 2's receive phase
             setMyCharacters(player2Setup!.characters); // P2's characters
             setMyObstacles(player2Setup!.obstacles);   // P2's obstacles
@@ -405,7 +452,7 @@ useEffect(() => {
             // This needs to be managed per player.
             // For simplicity now, GamePhaseUI will need the correct "before" hash.
             setGamePhase(GamePhase.GAME_P2_RECEIVE);
-        } else if (gamePhase === GamePhase.GAME_P2_PROVE) {
+        } else {
             // Player 2 finished, set up for Player 1's receive phase
             setMyCharacters(player1Setup!.characters);
             setMyObstacles(player1Setup!.obstacles);
@@ -422,6 +469,19 @@ useEffect(() => {
         }
         setCurrentMoveNumber(prev => prev + 1);
     };
+    useEffect(() => { handleProofGeneratedRef.current = handleProofGenerated; });
+
+    // Auto-advance from the receive phase to the action phase. Kept out of the
+    // render path so re-renders cannot schedule duplicate timers.
+    useEffect(() => {
+        if (gamePhase === GamePhase.GAME_P1_RECEIVE || gamePhase === GamePhase.GAME_P2_RECEIVE) {
+            const nextPhase = gamePhase === GamePhase.GAME_P1_RECEIVE
+                ? GamePhase.GAME_P1_ACTION
+                : GamePhase.GAME_P2_ACTION;
+            const timer = setTimeout(() => setGamePhase(nextPhase), 100);
+            return () => clearTimeout(timer);
+        }
+    }, [gamePhase]);
 
 
     // --- Render Logic ---
@@ -473,12 +533,9 @@ useEffect(() => {
             case GamePhase.GAME_P1_RECEIVE:
             case GamePhase.GAME_P2_RECEIVE:
                  // "Receive" phase implicitly handled by GamePhaseUI which will use the enemy inputs
-                 // Transition to action phase after processing enemy inputs
-                 // This could be a brief "Opponent's turn results..." screen
-                 // For now, auto-transition or manual "Start My Turn" button
-                 setTimeout(() => {
-                     setGamePhase(currentPlayer === 1 ? GamePhase.GAME_P1_ACTION : GamePhase.GAME_P2_ACTION);
-                 }, 100); // Auto-transition for now
+                 // This could be a brief "Opponent's turn results..." screen.
+                 // The auto-transition to the action phase runs in an effect (below),
+                 // not here: scheduling timers during render would leak one per re-render.
                  return <div>Player {currentPlayer} processing opponent's turn...</div>;
 
             case GamePhase.GAME_P1_ACTION:
@@ -527,7 +584,6 @@ useEffect(() => {
             {statusMessage && !generatingProof && <div className="status-message">{statusMessage}</div>}
             {generatingProof && <div className="status-message">Generating proof... {statusMessage}</div>}
 
-            {/* TODO: Add UI for displaying dataForOpponent to copy/paste in hot-seat mode */}
             {dataForOpponent && (
                 <div className="opponent-data-transfer">
                     <h3>Player {dataForOpponent.move_number % 2 === 0 ? 1 : 2} to Player {dataForOpponent.move_number % 2 === 0 ? 2 : 1}:</h3>
